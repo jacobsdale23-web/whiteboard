@@ -2,11 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { projects, milestones, dailyLogs, lineItems, expenses, invoices, payApps, sovItems, sovEntries } from "@/lib/db/schema";
+import { projects, milestones, dailyLogs, lineItems, expenses, invoices, payApps, sovItems, sovEntries, billingRates, billingTasks, tmInvoices } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
 import MilestoneSection from "./milestone-section";
 import LogSection from "./log-section";
 import BudgetSection from "./budget-section";
+import BillingSection from "./billing-section";
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -30,13 +31,21 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     sovItems: typeof sovItems.$inferSelect[];
     sovEntries: typeof sovEntries.$inferSelect[];
   } | null = null;
+  let billingData: {
+    billingRates: typeof billingRates.$inferSelect[];
+    billingTasks: typeof billingTasks.$inferSelect[];
+    tmInvoices: typeof tmInvoices.$inferSelect[];
+  } | null = null;
   if (isAdmin) {
-    const [projectExpenses, projectInvoices, projectPayApps, projectSovItems, projectSovEntries] = await Promise.all([
+    const [projectExpenses, projectInvoices, projectPayApps, projectSovItems, projectSovEntries, projectBillingRates, projectBillingTasks, projectTmInvoices] = await Promise.all([
       db.select().from(expenses).where(eq(expenses.projectId, id)),
       db.select().from(invoices).where(eq(invoices.projectId, id)),
       db.select().from(payApps).where(eq(payApps.projectId, id)),
       db.select().from(sovItems).where(eq(sovItems.projectId, id)),
       db.select().from(sovEntries).where(eq(sovEntries.projectId, id)),
+      db.select().from(billingRates).where(eq(billingRates.projectId, id)),
+      db.select().from(billingTasks).where(eq(billingTasks.projectId, id)),
+      db.select().from(tmInvoices).where(eq(tmInvoices.projectId, id)),
     ]);
     budgetData = {
       expenses: projectExpenses,
@@ -44,6 +53,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       payApps: projectPayApps,
       sovItems: projectSovItems,
       sovEntries: projectSovEntries,
+    };
+    billingData = {
+      billingRates: projectBillingRates,
+      billingTasks: projectBillingTasks,
+      tmInvoices: projectTmInvoices,
     };
   }
 
@@ -103,6 +117,17 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           </div>
         )}
       </div>
+
+      {isAdmin && billingData && (
+        <div style={{ marginBottom: 20 }}>
+          <BillingSection
+            projectId={id}
+            billingRates={billingData.billingRates}
+            billingTasks={billingData.billingTasks}
+            tmInvoices={billingData.tmInvoices}
+          />
+        </div>
+      )}
 
       <div style={{ marginBottom: 20 }}>
         <MilestoneSection projectId={id} milestones={projectMilestones} />

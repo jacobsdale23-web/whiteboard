@@ -49,7 +49,65 @@ export const dailyLogs = pgTable("daily_logs", {
   lineItem: text("line_item"), // itemNo, references lineItems.itemNo for this project
   crew: jsonb("crew").$type<{ name: string; position: string; hours: number }[]>().default([]),
   description: text("description"),
+  address: text("address"), // job-site address for this entry (T&M billing)
+  taskNumber: text("task_number"), // Atmos-style task/PO number (T&M billing) — references billing_tasks.taskNumber
+  locusviewNumber: text("locusview_number"), // Locusview work-order number (T&M billing)
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ---------- T&M billing (admin-only) ----------
+
+// $/hr by crew position, per project — negotiated rates differ by contract.
+export const billingRates = pgTable("billing_rates", {
+  id: text("id").primaryKey(), // `${projectId}-${position}` slug
+  projectId: text("project_id").notNull(),
+  position: text("position").notNull(),
+  hourlyRate: numeric("hourly_rate").notNull().default("0"),
+});
+
+// Persistent metadata for one recurring Atmos task/PO number, so weekly
+// invoices don't require re-typing the contract details every time.
+export const billingTasks = pgTable("billing_tasks", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull(),
+  taskNumber: text("task_number").notNull(),
+  projectName: text("project_name"), // e.g. "2026 SIR Functional Leak Repair / MS26 Func Work"
+  taskRequestNo: text("task_request_no"),
+  contractCoordinator: text("contract_coordinator"),
+  billToName: text("bill_to_name"),
+  billToAddress: text("bill_to_address"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// A generated weekly invoice. `lineItems` is a frozen snapshot computed at
+// generation time (from daily_logs), so editing logs later never changes
+// an invoice that's already been reviewed/approved/sent.
+export const tmInvoices = pgTable("tm_invoices", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull(),
+  billingTaskId: text("billing_task_id").notNull(),
+  invoiceNumber: text("invoice_number"),
+  periodStart: text("period_start").notNull(),
+  periodEnd: text("period_end").notNull(),
+  status: text("status").notNull().default("draft"), // draft | approved
+  total: numeric("total").notNull().default("0"),
+  lineItems: jsonb("line_items")
+    .$type<
+      {
+        date: string;
+        crewMember: string;
+        position: string;
+        leakNumber: string;
+        locusviewNumber: string;
+        address: string;
+        hours: number;
+        rate: number;
+        amount: number;
+      }[]
+    >()
+    .default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  approvedAt: timestamp("approved_at"),
 });
 
 // Public, price-free copy of each schedule-of-values line item, so field

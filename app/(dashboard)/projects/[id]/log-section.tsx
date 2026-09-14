@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { addLog, deleteLog } from "./actions";
 
-const POSITIONS = ["Operator", "Laborer", "Welder", "Locusview Tech"];
+const POSITIONS = ["Foreman", "Operator", "Laborer", "Welder", "Locusview Tech"];
 
 type LogEntry = {
   id: string;
@@ -13,6 +13,9 @@ type LogEntry = {
   lineItem: string | null;
   crew: { name: string; position: string; hours: number }[] | null;
   description: string | null;
+  address: string | null;
+  taskNumber: string | null;
+  locusviewNumber: string | null;
 };
 type LineItem = { itemNo: string; description: string | null };
 
@@ -62,6 +65,17 @@ export default function LogSection({
           </Field>
           <Field label="Foreman">
             <input type="text" name="foreman" required style={inputStyle} />
+          </Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Task / Project Number">
+              <input type="text" name="taskNumber" placeholder="e.g. 070.58526" style={inputStyle} />
+            </Field>
+            <Field label="Locusview Number">
+              <input type="text" name="locusviewNumber" style={inputStyle} />
+            </Field>
+          </div>
+          <Field label="Address">
+            <input type="text" name="address" placeholder="Job site address" style={inputStyle} />
           </Field>
           <Field label="Line Item">
             <select name="lineItem" style={inputStyle} defaultValue="">
@@ -131,8 +145,11 @@ export default function LogSection({
                 <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--ink-soft)" }}>
                   Leak #: {l.leakNumber}
                   {l.foreman ? ` · Foreman: ${l.foreman}` : ""}
+                  {l.taskNumber ? ` · Task #: ${l.taskNumber}` : ""}
+                  {l.locusviewNumber ? ` · Locusview #: ${l.locusviewNumber}` : ""}
                   {l.lineItem ? ` · Item ${l.lineItem}${li?.description ? ` (${li.description})` : ""}` : ""}
                 </div>
+                {l.address && <div style={{ fontSize: "0.76rem", color: "var(--muted)", marginTop: 2 }}>{l.address}</div>}
                 {!!l.crew?.length && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
                     {l.crew.map((c, i) => (

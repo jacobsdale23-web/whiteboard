@@ -34,6 +34,9 @@ export async function addLog(projectId: string, formData: FormData) {
   const foreman = String(formData.get("foreman") || "").trim();
   const lineItem = String(formData.get("lineItem") || "").trim() || null;
   const description = String(formData.get("description") || "").trim();
+  const address = String(formData.get("address") || "").trim() || null;
+  const taskNumber = String(formData.get("taskNumber") || "").trim() || null;
+  const locusviewNumber = String(formData.get("locusviewNumber") || "").trim() || null;
 
   const names = formData.getAll("crewName");
   const positions = formData.getAll("crewPosition");
@@ -53,6 +56,9 @@ export async function addLog(projectId: string, formData: FormData) {
     lineItem,
     crew: crewRows,
     description,
+    address,
+    taskNumber,
+    locusviewNumber,
   });
   revalidatePath(`/projects/${projectId}`);
 }
