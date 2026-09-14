@@ -9,13 +9,16 @@ export default async function BoardPage() {
 
   const active = allProjects.filter((p) => p.status === "active");
   const upcoming = allProjects.filter((p) => p.status === "upcoming");
+  // Individual crew workers (e.g. Jackson's T&M roster) stay in the crew
+  // table for daily-log entry, but only foremen are ever displayed here.
+  const foremen = allCrew.filter((c) => c.role === "foreman");
   const assignedNames = new Set(active.flatMap((p) => p.crew || []));
-  const atShop = allCrew.filter((c) => c.role === "foreman" && !assignedNames.has(c.name));
+  const atShop = foremen.filter((c) => !assignedNames.has(c.name));
 
   return (
     <>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20 }}>
-        <ProjectFormModal crewList={allCrew} />
+        <ProjectFormModal crewList={foremen} />
       </div>
 
       <section style={{ marginBottom: 32 }}>
@@ -33,7 +36,7 @@ export default async function BoardPage() {
                 <div style={{ fontSize: "0.85rem" }}>Crew: {(p.crew || []).join(", ") || "Unassigned"}</div>
               </Link>
               <div style={{ position: "absolute", top: 14, right: 14 }}>
-                <ProjectFormModal project={p} crewList={allCrew} />
+                <ProjectFormModal project={p} crewList={foremen} />
               </div>
             </div>
           ))}
@@ -55,7 +58,7 @@ export default async function BoardPage() {
                 </div>
               </Link>
               <div style={{ position: "absolute", top: 14, right: 14 }}>
-                <ProjectFormModal project={p} crewList={allCrew} />
+                <ProjectFormModal project={p} crewList={foremen} />
               </div>
             </div>
           ))}
