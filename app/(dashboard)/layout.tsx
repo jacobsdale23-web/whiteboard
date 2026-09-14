@@ -42,11 +42,41 @@ export default async function DashboardLayout({ children }: { children: React.Re
             </Link>
           </nav>
         </div>
-        <SignOutButton />
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Link
+            href="/team"
+            title="Account"
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.2)",
+              color: "var(--steel-ink)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: 700,
+              fontSize: "0.8rem",
+              textDecoration: "none",
+              flexShrink: 0,
+            }}
+          >
+            {initials(current.profile.name)}
+          </Link>
+          <SignOutButton />
+        </div>
       </header>
       <main style={{ maxWidth: 1100, margin: "0 auto", padding: 28 }}>{children}</main>
     </div>
   );
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  const a = parts[0]?.[0] || "";
+  const b = parts.length > 1 ? parts[1][0] : "";
+  return (a + b).toUpperCase();
 }
 
 const navLinkStyle: React.CSSProperties = {
