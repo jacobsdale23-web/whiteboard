@@ -82,7 +82,7 @@ const crewNames = [
 let crewCount = 0;
 for (const name of crewNames) {
   const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  await client.query(`INSERT INTO crew (id, name) VALUES ($1,$2) ON CONFLICT (id) DO NOTHING`, [id, name]);
+  await client.query(`INSERT INTO crew (id, name, role) VALUES ($1,$2,'worker') ON CONFLICT (id) DO NOTHING`, [id, name]);
   crewCount++;
 }
 console.log(`Crew roster additions: ${crewCount}`);

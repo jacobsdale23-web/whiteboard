@@ -10,7 +10,7 @@ export default async function BoardPage() {
   const active = allProjects.filter((p) => p.status === "active");
   const upcoming = allProjects.filter((p) => p.status === "upcoming");
   const assignedNames = new Set(active.flatMap((p) => p.crew || []));
-  const atShop = allCrew.filter((c) => !assignedNames.has(c.name));
+  const atShop = allCrew.filter((c) => c.role === "foreman" && !assignedNames.has(c.name));
 
   return (
     <>

@@ -1,0 +1,1 @@
+ALTER TABLE crew ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'foreman';

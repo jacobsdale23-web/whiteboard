@@ -27,6 +27,7 @@ export const crew = pgTable("crew", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   active: boolean("active").notNull().default(true),
+  role: text("role").notNull().default("foreman"), // "foreman" | "worker" — only foremen show up at the Shop
 });
 
 // ---------- per-project detail page ----------
