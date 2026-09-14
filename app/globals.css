@@ -1,0 +1,47 @@
+:root {
+  --bg: #f1f3f7;
+  --surface: #ffffff;
+  --surface-2: #e6eaf0;
+  --border: #d3d9e2;
+  --ink: #1a2230;
+  --ink-soft: #48505f;
+  --muted: #7c8598;
+  --steel: #1b3a63;
+  --steel-2: #0c2140;
+  --steel-ink: #eef2f7;
+  --rust: #c31f2c;
+  --rust-ink: #ffffff;
+  --active: #3f7a52;
+  --active-bg: #e2eee5;
+  --upcoming: #3a6ea1;
+  --upcoming-bg: #e3ebf3;
+  --shop: #2f7a78;
+  --shop-bg: #ddeeed;
+  --danger: #b95a1a;
+  --danger-bg: #f5e6d8;
+  --font-display: "Oswald", "Arial Narrow", sans-serif;
+  --font-body: "Public Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "IBM Plex Mono", "Consolas", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}
