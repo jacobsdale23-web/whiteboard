@@ -13,10 +13,15 @@ type ProjectRow = {
   duration: string | null;
   value: string | null;
   crew: string[] | null;
+  billingType: string;
 };
 type CrewMember = { id: string; name: string };
 
 const STATUSES = ["upcoming", "active", "complete"];
+const BILLING_TYPES = [
+  { value: "lump_sum", label: "Lump Sum / Unit Price" },
+  { value: "tm", label: "T&M" },
+];
 
 export default function ProjectFormModal({ project, crewList }: { project?: ProjectRow; crewList: CrewMember[] }) {
   const [open, setOpen] = useState(false);
@@ -37,6 +42,7 @@ export default function ProjectFormModal({ project, crewList }: { project?: Proj
       duration: String(formData.get("duration") || "").trim() || null,
       value: formData.get("value") === "" ? null : Number(formData.get("value")),
       crew,
+      billingType: String(formData.get("billingType") || "lump_sum"),
     };
     try {
       await saveProject(project?.id ?? null, data);
@@ -97,6 +103,15 @@ export default function ProjectFormModal({ project, crewList }: { project?: Proj
                 {STATUSES.map((s) => (
                   <option key={s} value={s}>
                     {s}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Billing Type">
+              <select name="billingType" defaultValue={project?.billingType || "lump_sum"} style={inputStyle}>
+                {BILLING_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
                   </option>
                 ))}
               </select>

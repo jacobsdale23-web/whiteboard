@@ -20,6 +20,7 @@ export const projects = pgTable("projects", {
   duration: text("duration"),
   value: numeric("value"),
   crew: jsonb("crew").$type<string[]>().default([]),
+  billingType: text("billing_type").notNull().default("lump_sum"), // "lump_sum" | "tm" — gates the T&M Billing section
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

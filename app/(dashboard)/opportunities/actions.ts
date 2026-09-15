@@ -70,6 +70,7 @@ export async function updateBidStatus(
         status: "upcoming",
         value: bidValue as never,
         crew: [],
+        billingType: existing.oppType === "T&M (Atmos)" ? "tm" : "lump_sum",
       })
       .returning();
     await db.update(opportunities).set({ convertedProjectId: project.id }).where(eq(opportunities.id, id));

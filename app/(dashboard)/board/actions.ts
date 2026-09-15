@@ -15,6 +15,7 @@ export type ProjectInput = {
   duration: string | null;
   value: number | null;
   crew: string[];
+  billingType: string;
 };
 
 export async function saveProject(id: string | null, data: ProjectInput) {
@@ -29,6 +30,7 @@ export async function saveProject(id: string | null, data: ProjectInput) {
     duration: data.duration,
     value: data.value as never,
     crew: data.crew,
+    billingType: data.billingType,
   };
 
   if (id) {

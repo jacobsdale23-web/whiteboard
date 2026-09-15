@@ -17,6 +17,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   const current = await getSessionAndProfile();
   const isAdmin = current?.profile.role === "admin";
+  const isTm = project.billingType === "tm";
 
   const [projectMilestones, projectLogs, projectLineItems] = await Promise.all([
     db.select().from(milestones).where(eq(milestones.projectId, id)),
@@ -37,15 +38,12 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     tmInvoices: typeof tmInvoices.$inferSelect[];
   } | null = null;
   if (isAdmin) {
-    const [projectExpenses, projectInvoices, projectPayApps, projectSovItems, projectSovEntries, projectBillingRates, projectBillingTasks, projectTmInvoices] = await Promise.all([
+    const [projectExpenses, projectInvoices, projectPayApps, projectSovItems, projectSovEntries] = await Promise.all([
       db.select().from(expenses).where(eq(expenses.projectId, id)),
       db.select().from(invoices).where(eq(invoices.projectId, id)),
       db.select().from(payApps).where(eq(payApps.projectId, id)),
       db.select().from(sovItems).where(eq(sovItems.projectId, id)),
       db.select().from(sovEntries).where(eq(sovEntries.projectId, id)),
-      db.select().from(billingRates).where(eq(billingRates.projectId, id)),
-      db.select().from(billingTasks).where(eq(billingTasks.projectId, id)),
-      db.select().from(tmInvoices).where(eq(tmInvoices.projectId, id)),
     ]);
     budgetData = {
       expenses: projectExpenses,
@@ -54,11 +52,19 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       sovItems: projectSovItems,
       sovEntries: projectSovEntries,
     };
-    billingData = {
-      billingRates: projectBillingRates,
-      billingTasks: projectBillingTasks,
-      tmInvoices: projectTmInvoices,
-    };
+
+    if (isTm) {
+      const [projectBillingRates, projectBillingTasks, projectTmInvoices] = await Promise.all([
+        db.select().from(billingRates).where(eq(billingRates.projectId, id)),
+        db.select().from(billingTasks).where(eq(billingTasks.projectId, id)),
+        db.select().from(tmInvoices).where(eq(tmInvoices.projectId, id)),
+      ]);
+      billingData = {
+        billingRates: projectBillingRates,
+        billingTasks: projectBillingTasks,
+        tmInvoices: projectTmInvoices,
+      };
+    }
   }
 
   const statusColor =
@@ -118,7 +124,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         )}
       </div>
 
-      {isAdmin && billingData && (
+      {isAdmin && isTm && billingData && (
         <div style={{ marginBottom: 20 }}>
           <BillingSection
             projectId={id}
