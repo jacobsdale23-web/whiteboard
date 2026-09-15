@@ -10,6 +10,7 @@ import {
   deleteTmInvoice,
   setInvoiceNumber,
   exportInvoiceExcel,
+  removeInvoiceLineItem,
 } from "./billing-actions";
 
 type BillingRate = { id: string; position: string; hourlyRate: string };
@@ -33,6 +34,7 @@ type TmLineItem = {
   rate: number;
   amount: number;
 };
+type TmWarning = { severity: "error" | "warning"; type: string; message: string; date: string; crewMember: string };
 type TmInvoice = {
   id: string;
   billingTaskId: string;
@@ -42,6 +44,7 @@ type TmInvoice = {
   status: string;
   total: string;
   lineItems: TmLineItem[] | null;
+  warnings: TmWarning[] | null;
 };
 
 // Admin-only. Never render this component, or pass billing rates / invoice
@@ -274,6 +277,9 @@ function InvoiceCard({ projectId, invoice, tasks }: { projectId: string; invoice
   const [expanded, setExpanded] = useState(false);
   const [, startTransition] = useTransition();
   const task = tasks.find((t) => t.id === invoice.billingTaskId);
+  const warnings = invoice.warnings || [];
+  const errorCount = warnings.filter((w) => w.severity === "error").length;
+  const warningCount = warnings.length - errorCount;
 
   async function handleExport() {
     const { filename, base64 } = await exportInvoiceExcel(projectId, invoice.id);
@@ -310,6 +316,11 @@ function InvoiceCard({ projectId, invoice, tasks }: { projectId: string; invoice
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {!!warnings.length && (
+            <span style={{ ...flagBadgeStyle, background: errorCount ? "var(--danger-bg, #fdecea)" : "var(--surface-2)", color: errorCount ? "var(--danger, #c0392b)" : "var(--ink-soft)" }}>
+              ⚠ {warnings.length} {warnings.length === 1 ? "issue" : "issues"}
+            </span>
+          )}
           <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>${Number(invoice.total).toLocaleString()}</span>
           <button onClick={() => setExpanded((s) => !s)} style={addBtnStyle}>
             {expanded ? "Hide" : "Review"}
@@ -319,6 +330,22 @@ function InvoiceCard({ projectId, invoice, tasks }: { projectId: string; invoice
 
       {expanded && (
         <div style={{ marginTop: 12 }}>
+          {!!warnings.length && (
+            <div style={{ border: "1px solid var(--danger, #c0392b)", borderRadius: 8, padding: "10px 12px", marginBottom: 12, background: "var(--danger-bg, #fdecea)" }}>
+              <div style={{ fontSize: "0.76rem", fontWeight: 700, textTransform: "uppercase", marginBottom: 6, color: "var(--danger, #c0392b)" }}>
+                Screening found {errorCount ? `${errorCount} error${errorCount === 1 ? "" : "s"}` : ""}
+                {errorCount && warningCount ? " and " : ""}
+                {warningCount ? `${warningCount} warning${warningCount === 1 ? "" : "s"}` : ""}
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: "0.8rem", color: "var(--ink)" }}>
+                {warnings.map((w, i) => (
+                  <li key={i} style={{ marginBottom: 3 }}>
+                    {w.severity === "error" ? "🛑" : "⚠"} {w.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
             <input
               type="text"
@@ -353,7 +380,7 @@ function InvoiceCard({ projectId, invoice, tasks }: { projectId: string; invoice
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.76rem", whiteSpace: "nowrap" }}>
               <thead>
                 <tr>
-                  {["Date", "Crew Member", "Position", "Leak #", "Locusview #", "Address", "Hours", "Rate", "Amount"].map((h) => (
+                  {["Date", "Crew Member", "Position", "Leak #", "Locusview #", "Address", "Hours", "Rate", "Amount", ""].map((h) => (
                     <th key={h} style={thStyle}>
                       {h}
                     </th>
@@ -361,19 +388,37 @@ function InvoiceCard({ projectId, invoice, tasks }: { projectId: string; invoice
                 </tr>
               </thead>
               <tbody>
-                {(invoice.lineItems || []).map((li, i) => (
-                  <tr key={i}>
-                    <td style={tdStyle}>{li.date}</td>
-                    <td style={{ ...tdStyle, fontFamily: "inherit" }}>{li.crewMember}</td>
-                    <td style={{ ...tdStyle, fontFamily: "inherit" }}>{li.position}</td>
-                    <td style={tdStyle}>{li.leakNumber}</td>
-                    <td style={tdStyle}>{li.locusviewNumber}</td>
-                    <td style={{ ...tdStyle, fontFamily: "inherit" }}>{li.address}</td>
-                    <td style={tdStyle}>{li.hours}</td>
-                    <td style={tdStyle}>${li.rate.toFixed(2)}</td>
-                    <td style={tdStyle}>${li.amount.toFixed(2)}</td>
-                  </tr>
-                ))}
+                {(invoice.lineItems || []).map((li, i) => {
+                  const flagged = warnings.some((w) => w.crewMember === li.crewMember && w.date === li.date);
+                  return (
+                    <tr key={i} style={flagged ? { background: "var(--danger-bg, #fdecea)" } : undefined}>
+                      <td style={tdStyle}>{li.date}</td>
+                      <td style={{ ...tdStyle, fontFamily: "inherit" }}>{li.crewMember}</td>
+                      <td style={{ ...tdStyle, fontFamily: "inherit" }}>{li.position}</td>
+                      <td style={tdStyle}>{li.leakNumber}</td>
+                      <td style={tdStyle}>{li.locusviewNumber}</td>
+                      <td style={{ ...tdStyle, fontFamily: "inherit" }}>{li.address}</td>
+                      <td style={tdStyle}>{li.hours}</td>
+                      <td style={tdStyle}>${li.rate.toFixed(2)}</td>
+                      <td style={tdStyle}>${li.amount.toFixed(2)}</td>
+                      <td style={tdStyle}>
+                        {invoice.status === "draft" && (
+                          <button
+                            onClick={() => {
+                              if (confirm(`Remove ${li.crewMember}'s ${li.date} entry from this invoice?`)) {
+                                startTransition(() => removeInvoiceLineItem(projectId, invoice.id, i));
+                              }
+                            }}
+                            style={{ ...deleteBtnStyle, width: 22, height: 22, fontSize: "0.7rem" }}
+                            title="Remove this line"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -417,4 +462,5 @@ const labelStyle: React.CSSProperties = { display: "block", fontSize: "0.72rem",
 const primaryBtnStyle: React.CSSProperties = { background: "var(--rust)", color: "var(--rust-ink)", border: "none", borderRadius: 6, padding: "8px 14px", fontWeight: 600, cursor: "pointer", fontSize: "0.85rem" };
 const secondaryBtnStyle: React.CSSProperties = { background: "var(--surface-2)", color: "var(--ink)", border: "none", borderRadius: 6, padding: "8px 14px", fontWeight: 600, cursor: "pointer", fontSize: "0.85rem" };
 const thStyle: React.CSSProperties = { textAlign: "left", fontSize: "0.66rem", textTransform: "uppercase", color: "var(--muted)", padding: "6px 9px", background: "var(--surface-2)" };
+const flagBadgeStyle: React.CSSProperties = { fontSize: "0.72rem", fontWeight: 700, padding: "3px 9px", borderRadius: 20 };
 const tdStyle: React.CSSProperties = { padding: "6px 9px", fontFamily: "var(--font-mono)", borderBottom: "1px solid var(--border)" };

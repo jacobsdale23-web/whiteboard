@@ -2,11 +2,11 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gte, lte } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { billingRates, billingTasks, tmInvoices, dailyLogs } from "@/lib/db/schema";
+import { billingRates, billingTasks, tmInvoices, dailyLogs, projects } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
-import { buildInvoiceLineItems, sumLineItems } from "@/lib/tm-billing";
+import { buildInvoiceLineItems, sumLineItems, validateLineItems, findCrossCrewOverlaps, type TmLineItem } from "@/lib/tm-billing";
 import * as XLSX from "xlsx";
 
 // Real, server-enforced admin check — rates and invoice totals must never
@@ -51,6 +51,22 @@ export async function deleteBillingTask(projectId: string, id: string) {
   revalidatePath(`/projects/${projectId}`);
 }
 
+// Screens line items against every other project's daily logs for the same
+// period, so a crew member billed here who was also logged under a
+// different crew on the same date gets flagged as an overlap.
+async function computeWarnings(projectId: string, periodStart: string, periodEnd: string, items: TmLineItem[]) {
+  const [periodLogs, allProjects] = await Promise.all([
+    db.select().from(dailyLogs).where(and(gte(dailyLogs.date, periodStart), lte(dailyLogs.date, periodEnd))),
+    db.select().from(projects),
+  ]);
+  const projectNameById = new Map(allProjects.map((p) => [p.id, p.name]));
+  const otherLogs = periodLogs
+    .filter((l) => l.projectId !== projectId)
+    .map((l) => ({ projectId: l.projectId, projectName: projectNameById.get(l.projectId) || l.projectId, date: l.date, crew: l.crew }));
+
+  return [...validateLineItems(items), ...findCrossCrewOverlaps(items, projectId, otherLogs)];
+}
+
 export async function generateInvoice(
   projectId: string,
   billingTaskId: string,
@@ -73,6 +89,7 @@ export async function generateInvoice(
     throw new Error("No daily log hours found for that task number in the selected period.");
   }
   const total = sumLineItems(lineItems);
+  const warnings = await computeWarnings(projectId, periodStart, periodEnd, lineItems);
 
   const [invoice] = await db
     .insert(tmInvoices)
@@ -85,11 +102,31 @@ export async function generateInvoice(
       status: "draft",
       total: total as never,
       lineItems,
+      warnings,
     })
     .returning();
 
   revalidatePath(`/projects/${projectId}`);
   return invoice.id;
+}
+
+export async function removeInvoiceLineItem(projectId: string, invoiceId: string, lineIndex: number) {
+  await requireAdmin();
+  const [invoice] = await db
+    .select()
+    .from(tmInvoices)
+    .where(and(eq(tmInvoices.id, invoiceId), eq(tmInvoices.projectId, projectId)));
+  if (!invoice) throw new Error("Invoice not found.");
+
+  const items = (invoice.lineItems || []).filter((_, i) => i !== lineIndex);
+  const total = sumLineItems(items);
+  const warnings = await computeWarnings(projectId, invoice.periodStart, invoice.periodEnd, items);
+
+  await db
+    .update(tmInvoices)
+    .set({ lineItems: items, total: total as never, warnings })
+    .where(eq(tmInvoices.id, invoiceId));
+  revalidatePath(`/projects/${projectId}`);
 }
 
 export async function approveInvoice(projectId: string, id: string) {
@@ -125,6 +162,13 @@ export async function exportInvoiceExcel(projectId: string, id: string): Promise
   if (!invoice) throw new Error("Invoice not found.");
   const [task] = await db.select().from(billingTasks).where(eq(billingTasks.id, invoice.billingTaskId));
 
+  const warnings = invoice.warnings || [];
+  const flagsFor = (li: { crewMember: string; date: string }) =>
+    warnings
+      .filter((w) => w.crewMember === li.crewMember && w.date === li.date)
+      .map((w) => w.message)
+      .join("; ");
+
   const header = [
     ["Task / Project Number", task?.taskNumber || ""],
     ["Project Name", task?.projectName || ""],
@@ -135,7 +179,7 @@ export async function exportInvoiceExcel(projectId: string, id: string): Promise
     ["Period", `${invoice.periodStart} to ${invoice.periodEnd}`],
     ["Invoice #", invoice.invoiceNumber || ""],
     [],
-    ["Date", "Crew Member", "Position", "Leak #", "Locusview #", "Address", "Hours", "Rate", "Amount"],
+    ["Date", "Crew Member", "Position", "Leak #", "Locusview #", "Address", "Hours", "Rate", "Amount", "Flags"],
   ];
 
   const rows = (invoice.lineItems || []).map((li) => [
@@ -148,8 +192,17 @@ export async function exportInvoiceExcel(projectId: string, id: string): Promise
     li.hours,
     li.rate,
     li.amount,
+    flagsFor(li),
   ]);
-  rows.push(["", "", "", "", "", "", "", "Total", Number(invoice.total)]);
+  rows.push(["", "", "", "", "", "", "", "Total", Number(invoice.total), ""]);
+
+  if (warnings.length) {
+    rows.push([]);
+    rows.push(["Flagged Issues", "", "", "", "", "", "", "", "", ""]);
+    for (const w of warnings) {
+      rows.push([w.severity.toUpperCase(), w.message, "", "", "", "", "", "", "", ""]);
+    }
+  }
 
   const sheet = XLSX.utils.aoa_to_sheet([...header, ...rows]);
   const wb = XLSX.utils.book_new();
