@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import Anthropic, { toFile } from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { BID_CATEGORIES } from "./estimate";
@@ -31,23 +31,36 @@ For each finding, note which bid category it most likely affects, or null if non
 // Sends the uploaded plan/spec PDFs to Claude and returns a structured
 // list of flagged items. Costs real API usage each call — the caller
 // should gate this behind an explicit user action, not run it automatically.
+//
+// Full spec volumes routinely blow past the Messages API's 32mb inline
+// request-size limit, so files go through the Files API (500mb/file) and
+// get referenced by file_id instead of inlined as base64. Uploaded files
+// are deleted again once the review call finishes.
 export async function reviewPlanDocuments(files: { filename: string; buffer: Buffer }[]): Promise<PlanReviewResult> {
   const client = new Anthropic();
 
-  const content: Anthropic.Messages.ContentBlockParam[] = files.map((f) => ({
-    type: "document" as const,
-    source: { type: "base64" as const, media_type: "application/pdf" as const, data: f.buffer.toString("base64") },
-    title: f.filename,
-  }));
-  content.push({ type: "text", text: REVIEW_PROMPT });
+  const uploaded = await Promise.all(
+    files.map(async (f) => client.files.upload({ file: await toFile(f.buffer, f.filename, { type: "application/pdf" }) }))
+  );
 
-  const response = await client.messages.parse({
-    model: "claude-sonnet-5",
-    max_tokens: 8000,
-    messages: [{ role: "user", content }],
-    output_config: { format: zodOutputFormat(PlanReviewSchema) },
-  });
+  try {
+    const content: Anthropic.Messages.ContentBlockParam[] = uploaded.map((u, i) => ({
+      type: "document" as const,
+      source: { type: "file" as const, file_id: u.id },
+      title: files[i].filename,
+    }));
+    content.push({ type: "text", text: REVIEW_PROMPT });
 
-  if (!response.parsed_output) throw new Error("Couldn't parse the AI review response.");
-  return response.parsed_output;
+    const response = await client.messages.parse({
+      model: "claude-sonnet-5",
+      max_tokens: 8000,
+      messages: [{ role: "user", content }],
+      output_config: { format: zodOutputFormat(PlanReviewSchema) },
+    });
+
+    if (!response.parsed_output) throw new Error("Couldn't parse the AI review response.");
+    return response.parsed_output;
+  } finally {
+    await Promise.all(uploaded.map((u) => client.files.delete(u.id).catch(() => {})));
+  }
 }
