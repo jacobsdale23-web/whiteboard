@@ -2,9 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { opportunities, bidItems, estimateDetails } from "@/lib/db/schema";
+import { opportunities, bidItems, estimateDetails, planFiles } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
 import EstimateSection from "./estimate-section";
+import PlanFilesSection from "./plan-files-section";
 
 export default async function OpportunityDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -58,12 +59,18 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
 }
 
 async function EstimateSectionLoader({ opportunityId }: { opportunityId: string }) {
-  const [items, details] = await Promise.all([
+  const [items, details, files] = await Promise.all([
     db.select().from(bidItems).where(eq(bidItems.opportunityId, opportunityId)),
     db.query.estimateDetails.findFirst({ where: eq(estimateDetails.opportunityId, opportunityId) }),
+    db.select().from(planFiles).where(eq(planFiles.opportunityId, opportunityId)),
   ]);
 
-  return <EstimateSection opportunityId={opportunityId} items={items} details={details ?? null} />;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <PlanFilesSection opportunityId={opportunityId} files={files} />
+      <EstimateSection opportunityId={opportunityId} items={items} details={details ?? null} />
+    </div>
+  );
 }
 
 function Fact({ label, value }: { label: string; value: string }) {

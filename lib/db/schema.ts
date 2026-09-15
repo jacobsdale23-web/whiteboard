@@ -264,3 +264,15 @@ export const estimateDetails = pgTable("estimate_details", {
   additionalNotes: text("additional_notes"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// Uploaded plan/spec PDFs, stored in Neon Object Storage (private bucket
+// "bid-documents"). `storageKey` is the S3 object key; the file itself
+// never touches Postgres.
+export const planFiles = pgTable("plan_files", {
+  id: text("id").primaryKey(),
+  opportunityId: text("opportunity_id").notNull(),
+  filename: text("filename").notNull(),
+  storageKey: text("storage_key").notNull(),
+  fileSize: numeric("file_size").notNull().default("0"),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+});
