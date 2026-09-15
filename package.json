@@ -12,6 +12,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.126.0",
     "@aws-sdk/client-s3": "^3.1132.0",
     "@aws-sdk/s3-request-presigner": "^3.1132.0",
     "@neondatabase/auth": "latest",
@@ -21,7 +22,8 @@
     "pg": "^8.23.0",
     "react": "19.1.1",
     "react-dom": "19.1.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

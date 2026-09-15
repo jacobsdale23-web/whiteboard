@@ -2,12 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { opportunities, bidItems, estimateDetails, planFiles } from "@/lib/db/schema";
+import { opportunities, bidItems, estimateDetails, planFiles, planReviews } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
 import { computeEstimateSummary } from "@/lib/estimate";
 import { isSimilarText } from "@/lib/similar-bids";
 import EstimateSection from "./estimate-section";
 import PlanFilesSection from "./plan-files-section";
+import PlanReviewSection from "./plan-review-section";
 import SimilarBidsSection from "./similar-bids-section";
 
 export default async function OpportunityDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -62,10 +63,11 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
 }
 
 async function EstimateSectionLoader({ opportunityId, customer }: { opportunityId: string; customer: string | null }) {
-  const [items, details, files, allOpportunities, allItems, allDetails] = await Promise.all([
+  const [items, details, files, reviews, allOpportunities, allItems, allDetails] = await Promise.all([
     db.select().from(bidItems).where(eq(bidItems.opportunityId, opportunityId)),
     db.query.estimateDetails.findFirst({ where: eq(estimateDetails.opportunityId, opportunityId) }),
     db.select().from(planFiles).where(eq(planFiles.opportunityId, opportunityId)),
+    db.select().from(planReviews).where(eq(planReviews.opportunityId, opportunityId)),
     db.select().from(opportunities),
     db.select().from(bidItems),
     db.select().from(estimateDetails),
@@ -119,6 +121,7 @@ async function EstimateSectionLoader({ opportunityId, customer }: { opportunityI
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <PlanFilesSection opportunityId={opportunityId} files={files} />
+      <PlanReviewSection opportunityId={opportunityId} reviews={reviews} hasFiles={!!files.length} />
       <SimilarBidsSection bids={similarBids} />
       <EstimateSection opportunityId={opportunityId} items={items} details={details ?? null} />
     </div>

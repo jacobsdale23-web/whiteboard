@@ -276,3 +276,16 @@ export const planFiles = pgTable("plan_files", {
   fileSize: numeric("file_size").notNull().default("0"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
 });
+
+// One AI review run over the currently-uploaded plan/spec PDFs. Frozen at
+// generation time like everything else here -- re-running creates a new row
+// rather than overwriting, so a history of reviews survives plan revisions.
+export const planReviews = pgTable("plan_reviews", {
+  id: text("id").primaryKey(),
+  opportunityId: text("opportunity_id").notNull(),
+  summary: text("summary"),
+  findings: jsonb("findings")
+    .$type<{ severity: "high" | "medium" | "low"; category: string; title: string; description: string; suggestedBidCategory: string | null }[]>()
+    .default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});

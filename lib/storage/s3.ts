@@ -22,3 +22,13 @@ export async function deleteObject(key: string) {
 export async function getDownloadUrl(key: string): Promise<string> {
   return getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: key }), { expiresIn: 300 });
 }
+
+// Raw bytes, for server-side use (e.g. handing a PDF straight to Claude).
+export async function getObjectBuffer(key: string): Promise<Buffer> {
+  const result = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of result.Body as AsyncIterable<Uint8Array>) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
