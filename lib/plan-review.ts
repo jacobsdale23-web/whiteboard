@@ -34,33 +34,55 @@ For each finding, note which bid category it most likely affects, or null if non
 //
 // Full spec volumes routinely blow past the Messages API's 32mb inline
 // request-size limit, so files go through the Files API (500mb/file) and
-// get referenced by file_id instead of inlined as base64. Uploaded files
-// are deleted again once the review call finishes.
+// get referenced by file_id instead of inlined as base64. Beyond that,
+// Anthropic's own docs note that large/dense scanned PDFs can still fail
+// to process even via the Files API, and recommend splitting the document
+// up -- so each plan file gets its own review call rather than bundling
+// them all into one request. That also means one oversized/corrupt volume
+// fails on its own instead of taking down the whole review. Uploaded files
+// are deleted again once their review call finishes.
 export async function reviewPlanDocuments(files: { filename: string; buffer: Buffer }[]): Promise<PlanReviewResult> {
   const client = new Anthropic();
 
-  const uploaded = await Promise.all(
-    files.map(async (f) => client.files.upload({ file: await toFile(f.buffer, f.filename, { type: "application/pdf" }) }))
+  const results = await Promise.all(
+    files.map(async (f) => {
+      const uploaded = await client.files.upload({ file: await toFile(f.buffer, f.filename, { type: "application/pdf" }) });
+      try {
+        const response = await client.messages.parse({
+          model: "claude-sonnet-5",
+          max_tokens: 8000,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "document", source: { type: "file", file_id: uploaded.id }, title: f.filename },
+                { type: "text", text: REVIEW_PROMPT },
+              ],
+            },
+          ],
+          output_config: { format: zodOutputFormat(PlanReviewSchema) },
+        });
+
+        if (!response.parsed_output) throw new Error("couldn't parse the AI review response");
+        return { filename: f.filename, result: response.parsed_output, error: null as string | null };
+      } catch (e) {
+        return { filename: f.filename, result: null as PlanReviewResult | null, error: e instanceof Error ? e.message : "review failed" };
+      } finally {
+        await client.files.delete(uploaded.id).catch(() => {});
+      }
+    })
   );
 
-  try {
-    const content: Anthropic.Messages.ContentBlockParam[] = uploaded.map((u, i) => ({
-      type: "document" as const,
-      source: { type: "file" as const, file_id: u.id },
-      title: files[i].filename,
-    }));
-    content.push({ type: "text", text: REVIEW_PROMPT });
-
-    const response = await client.messages.parse({
-      model: "claude-sonnet-5",
-      max_tokens: 8000,
-      messages: [{ role: "user", content }],
-      output_config: { format: zodOutputFormat(PlanReviewSchema) },
-    });
-
-    if (!response.parsed_output) throw new Error("Couldn't parse the AI review response.");
-    return response.parsed_output;
-  } finally {
-    await Promise.all(uploaded.map((u) => client.files.delete(u.id).catch(() => {})));
+  const succeeded = results.filter((r): r is { filename: string; result: PlanReviewResult; error: null } => r.result !== null);
+  if (!succeeded.length) {
+    throw new Error(results.map((r) => `${r.filename}: ${r.error}`).join(" | "));
   }
+
+  const summaries = succeeded.map((r) => `${r.filename}: ${r.result.summary}`);
+  const failures = results.filter((r) => r.error).map((r) => `${r.filename} could not be reviewed (${r.error}).`);
+
+  return {
+    summary: [...summaries, ...failures].join(" "),
+    findings: succeeded.flatMap((r) => r.result.findings),
+  };
 }
