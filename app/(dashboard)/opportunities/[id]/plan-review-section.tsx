@@ -26,7 +26,14 @@ export default function PlanReviewSection({ opportunityId, reviews, files }: { o
     try {
       // One server action call per file so each file's Claude call gets its
       // own Vercel execution window instead of sharing one request's timeout.
-      const outcomes = await Promise.all(files.map((f) => reviewSinglePlanFile(opportunityId, f.id)));
+      // allSettled (not all) because a large scanned volume can still time
+      // out at the network/infra level (a 504, not a caught error) -- that
+      // must not wipe out the other files' results along with it.
+      const settled = await Promise.allSettled(files.map((f) => reviewSinglePlanFile(opportunityId, f.id)));
+      const outcomes = settled.map((s, i) =>
+        s.status === "fulfilled" ? s.value : { filename: files[i].filename, error: s.reason instanceof Error ? s.reason.message : "Review timed out or failed." }
+      );
+
       const succeeded = outcomes.filter((o) => o.result);
       if (!succeeded.length) {
         setError(outcomes.map((o) => `${o.filename}: ${o.error}`).join(" | "));
@@ -40,6 +47,7 @@ export default function PlanReviewSection({ opportunityId, reviews, files }: { o
         findings: succeeded.flatMap((o) => o.result!.findings),
       });
       if (saved.error) setError(saved.error);
+      else if (failures.length) setError(failures.join(" "));
     } finally {
       setRunning(false);
     }
