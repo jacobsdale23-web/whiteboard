@@ -14,6 +14,7 @@ type ProjectRow = {
   value: string | null;
   crew: string[] | null;
   billingType: string;
+  projectNumber: string | null;
 };
 type CrewMember = { id: string; name: string };
 
@@ -27,6 +28,7 @@ export default function ProjectFormModal({ project, crewList }: { project?: Proj
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [billingType, setBillingType] = useState(project?.billingType || "lump_sum");
   const isEdit = !!project;
 
   async function handleSubmit(formData: FormData) {
@@ -43,6 +45,7 @@ export default function ProjectFormModal({ project, crewList }: { project?: Proj
       value: formData.get("value") === "" ? null : Number(formData.get("value")),
       crew,
       billingType: String(formData.get("billingType") || "lump_sum"),
+      projectNumber: String(formData.get("projectNumber") || "").trim() || null,
     };
     try {
       await saveProject(project?.id ?? null, data);
@@ -108,7 +111,7 @@ export default function ProjectFormModal({ project, crewList }: { project?: Proj
               </select>
             </Field>
             <Field label="Billing Type">
-              <select name="billingType" defaultValue={project?.billingType || "lump_sum"} style={inputStyle}>
+              <select name="billingType" value={billingType} onChange={(e) => setBillingType(e.target.value)} style={inputStyle}>
                 {BILLING_TYPES.map((t) => (
                   <option key={t.value} value={t.value}>
                     {t.label}
@@ -116,6 +119,17 @@ export default function ProjectFormModal({ project, crewList }: { project?: Proj
                 ))}
               </select>
             </Field>
+            {billingType === "lump_sum" && (
+              <Field label="Project Number">
+                <input
+                  type="text"
+                  name="projectNumber"
+                  placeholder="Auto-assigned when activated"
+                  defaultValue={project?.projectNumber || ""}
+                  style={inputStyle}
+                />
+              </Field>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <Field label="Start Date">
                 <input type="date" name="startDate" defaultValue={project?.startDate || ""} style={inputStyle} />

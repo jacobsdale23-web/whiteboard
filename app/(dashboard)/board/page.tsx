@@ -27,7 +27,10 @@ export default async function BoardPage() {
           {active.map((p) => (
             <div key={p.id} style={{ position: "relative" }}>
               <Link href={`/projects/${p.id}`} style={cardStyle}>
-                <h3 style={{ fontSize: "1rem", paddingRight: 24 }}>{p.name}</h3>
+                <h3 style={{ fontSize: "1rem", paddingRight: 24 }}>
+                  {p.projectNumber && <span style={{ color: "var(--muted)", fontFamily: "var(--font-mono)" }}>{p.projectNumber} · </span>}
+                  {p.name}
+                </h3>
                 <div style={{ color: "var(--muted)", fontSize: "0.85rem" }}>{p.location}</div>
                 <div style={{ marginTop: 8, fontSize: "0.85rem" }}>Completion: {p.endDate || "—"}</div>
                 <div style={{ fontSize: "0.85rem" }}>

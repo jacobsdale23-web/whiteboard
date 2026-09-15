@@ -21,6 +21,11 @@ export const projects = pgTable("projects", {
   value: numeric("value"),
   crew: jsonb("crew").$type<string[]>().default([]),
   billingType: text("billing_type").notNull().default("lump_sum"), // "lump_sum" | "tm" — gates the T&M Billing section
+  // "YY-NNN" (e.g. 26-001), sequential by start order within the start
+  // year. Only lump-sum/unit-price jobs use this — T&M jobs are tracked by
+  // the client's own task/PO number instead (see billing_tasks). Assigned
+  // automatically when a project becomes active; null before then.
+  projectNumber: text("project_number"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
