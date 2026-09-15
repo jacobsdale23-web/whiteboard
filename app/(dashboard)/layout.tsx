@@ -40,6 +40,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <Link href="/opportunities" style={navLinkStyle}>
               Opportunities
             </Link>
+            <Link href="/completed" style={navLinkStyle}>
+              Completed
+            </Link>
           </nav>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
