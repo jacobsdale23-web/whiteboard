@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { saveBidItem, deleteBidItem, saveEstimateDetails, exportEstimateExcel, type BidItemInput, type EstimateDetailsInput } from "./estimate-actions";
 import { BID_CATEGORIES, computeEstimateSummary } from "@/lib/estimate";
+import BidImportButton from "./bid-import-button";
 
 type BidItem = {
   id: string;
@@ -96,8 +97,9 @@ export default function EstimateSection({ opportunityId, items, details }: { opp
       <div style={cardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase" }}>Bid Items</h3>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
             <BidItemModal opportunityId={opportunityId} nextItemNo={String(sorted.length + 1)} />
+            <BidImportButton opportunityId={opportunityId} />
             <button onClick={handleExport} disabled={exporting} style={secondaryBtnStyle}>
               {exporting ? "Exporting…" : "Export to Excel"}
             </button>
