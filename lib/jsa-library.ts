@@ -2,7 +2,7 @@ export const TASK_TYPES = [
   "Heavy Equipment Operation",
   "Plastic Pipe Fusion",
   "Steel Pipe Welding",
-  "Company Vehicle Operation",
+  "Directional Boring",
   "Excavation / Trenching",
   "General Labor",
 ] as const;
@@ -44,11 +44,12 @@ export const HAZARD_LIBRARY: Record<string, HazardControl[]> = {
     { hazard: "Fumes / toxic gas exposure", control: "Ventilation or respiratory protection used as needed" },
     { hazard: "Electric shock", control: "Equipment inspected before use; dry working conditions maintained" },
   ],
-  "Company Vehicle Operation": [
-    { hazard: "Collision / distracted driving", control: "Seatbelt worn; no phone use while driving" },
-    { hazard: "Backing accidents", control: "Spotter used when backing; walk-around performed before moving" },
-    { hazard: "Unsecured load", control: "Equipment/materials secured before transport" },
-    { hazard: "Poor road/weather conditions", control: "Speed adjusted for conditions; pre-trip inspection completed" },
+  "Directional Boring": [
+    { hazard: "Underground utility strike", control: "811 locates called in and verified; potholing done at all crossings before boring" },
+    { hazard: "Inadvertent frac-out (drilling fluid surfacing)", control: "Bore path and fluid pressure monitored; containment plan in place" },
+    { hazard: "Struck-by / entanglement with rotating drill string", control: "Crew kept clear of rotating components; lockout before servicing" },
+    { hazard: "High-pressure fluid injection injury", control: "Drill rig hoses/fittings inspected before use; crew kept clear of pressurized lines" },
+    { hazard: "Entry/exit pit hazards", control: "Pits barricaded; protective system used per depth" },
   ],
   "Excavation / Trenching": [
     { hazard: "Cave-in / collapse", control: "Protective system used (sloping, shoring, or trench box) per depth" },
