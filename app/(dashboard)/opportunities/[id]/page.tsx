@@ -121,7 +121,7 @@ async function EstimateSectionLoader({ opportunityId, customer }: { opportunityI
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <PlanFilesSection opportunityId={opportunityId} files={files} />
-      <PlanReviewSection opportunityId={opportunityId} reviews={reviews} hasFiles={!!files.length} />
+      <PlanReviewSection opportunityId={opportunityId} reviews={reviews} files={files.map((f) => ({ id: f.id, filename: f.filename }))} />
       <SimilarBidsSection bids={similarBids} />
       <EstimateSection opportunityId={opportunityId} items={items} details={details ?? null} />
     </div>

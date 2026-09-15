@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { runPlanReview, deletePlanReview } from "./plan-review-actions";
+import { reviewSinglePlanFile, savePlanReview, deletePlanReview } from "./plan-review-actions";
 
 type Finding = { severity: "high" | "medium" | "low"; category: string; title: string; description: string; suggestedBidCategory: string | null };
 type PlanReview = { id: string; summary: string | null; findings: Finding[] | null; createdAt: Date };
+type PlanFileRef = { id: string; filename: string };
 
 const SEVERITY_STYLE: Record<Finding["severity"], { bg: string; fg: string; icon: string }> = {
   high: { bg: "var(--danger-bg, #fdecea)", fg: "var(--danger, #c0392b)", icon: "🛑" },
@@ -12,18 +13,33 @@ const SEVERITY_STYLE: Record<Finding["severity"], { bg: string; fg: string; icon
   low: { bg: "var(--surface-2)", fg: "var(--ink-soft)", icon: "•" },
 };
 
-export default function PlanReviewSection({ opportunityId, reviews, hasFiles }: { opportunityId: string; reviews: PlanReview[]; hasFiles: boolean }) {
+export default function PlanReviewSection({ opportunityId, reviews, files }: { opportunityId: string; reviews: PlanReview[]; files: PlanFileRef[] }) {
   const [, startTransition] = useTransition();
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
+  const hasFiles = files.length > 0;
 
   async function handleRun() {
-    if (!confirm("Send the uploaded plans/specs to Claude for review? This uses paid API usage (typically well under $1 per run).")) return;
+    if (!confirm("Send the uploaded plans/specs to Claude for review? This uses paid API usage (typically well under $1 per run, more for large scanned plan sets).")) return;
     setError("");
     setRunning(true);
     try {
-      const result = await runPlanReview(opportunityId);
-      if (result.error) setError(result.error);
+      // One server action call per file so each file's Claude call gets its
+      // own Vercel execution window instead of sharing one request's timeout.
+      const outcomes = await Promise.all(files.map((f) => reviewSinglePlanFile(opportunityId, f.id)));
+      const succeeded = outcomes.filter((o) => o.result);
+      if (!succeeded.length) {
+        setError(outcomes.map((o) => `${o.filename}: ${o.error}`).join(" | "));
+        return;
+      }
+
+      const summaries = succeeded.map((o) => `${o.filename}: ${o.result!.summary}`);
+      const failures = outcomes.filter((o) => o.error).map((o) => `${o.filename} could not be reviewed (${o.error}).`);
+      const saved = await savePlanReview(opportunityId, {
+        summary: [...summaries, ...failures].join(" "),
+        findings: succeeded.flatMap((o) => o.result!.findings),
+      });
+      if (saved.error) setError(saved.error);
     } finally {
       setRunning(false);
     }

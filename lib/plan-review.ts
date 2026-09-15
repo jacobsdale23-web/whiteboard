@@ -28,61 +28,42 @@ Read the attached plans/specs and flag anything an estimator could easily miss o
 
 For each finding, note which bid category it most likely affects, or null if none fit well. Only flag things genuinely worth a second look — don't pad the list with routine scope every pipeline bid already expects.`;
 
-// Sends the uploaded plan/spec PDFs to Claude and returns a structured
-// list of flagged items. Costs real API usage each call — the caller
-// should gate this behind an explicit user action, not run it automatically.
+// Sends ONE plan/spec PDF to Claude and returns a structured list of
+// flagged items. Costs real API usage each call — the caller should gate
+// this behind an explicit user action, not run it automatically.
 //
-// Full spec volumes routinely blow past the Messages API's 32mb inline
-// request-size limit, so files go through the Files API (500mb/file) and
-// get referenced by file_id instead of inlined as base64. Beyond that,
-// Anthropic's own docs note that large/dense scanned PDFs can still fail
-// to process even via the Files API, and recommend splitting the document
-// up -- so each plan file gets its own review call rather than bundling
-// them all into one request. That also means one oversized/corrupt volume
-// fails on its own instead of taking down the whole review. Uploaded files
-// are deleted again once their review call finishes.
-export async function reviewPlanDocuments(files: { filename: string; buffer: Buffer }[]): Promise<PlanReviewResult> {
+// This reviews exactly one file per call, invoked from its own server
+// action round trip, so each file gets its own ~5 minute Vercel execution
+// window. Bundling multiple large scanned volumes into a single
+// request/invocation risked both Anthropic's own PDF-processing limits
+// and Vercel's function timeout (a 2-volume, 54mb review hit the 300s
+// timeout even after fixing the request-size and PDF-processing errors).
+// The file goes through the Files API (500mb/file, no request-size
+// constraint) instead of being inlined as base64, and is deleted again
+// once the review call finishes.
+export async function reviewSinglePlanDocument(file: { filename: string; buffer: Buffer }): Promise<PlanReviewResult> {
   const client = new Anthropic();
+  const uploaded = await client.files.upload({ file: await toFile(file.buffer, file.filename, { type: "application/pdf" }) });
 
-  const results = await Promise.all(
-    files.map(async (f) => {
-      const uploaded = await client.files.upload({ file: await toFile(f.buffer, f.filename, { type: "application/pdf" }) });
-      try {
-        const response = await client.messages.parse({
-          model: "claude-sonnet-5",
-          max_tokens: 8000,
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "document", source: { type: "file", file_id: uploaded.id }, title: f.filename },
-                { type: "text", text: REVIEW_PROMPT },
-              ],
-            },
+  try {
+    const response = await client.messages.parse({
+      model: "claude-sonnet-5",
+      max_tokens: 8000,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "document", source: { type: "file", file_id: uploaded.id }, title: file.filename },
+            { type: "text", text: REVIEW_PROMPT },
           ],
-          output_config: { format: zodOutputFormat(PlanReviewSchema) },
-        });
+        },
+      ],
+      output_config: { format: zodOutputFormat(PlanReviewSchema) },
+    });
 
-        if (!response.parsed_output) throw new Error("couldn't parse the AI review response");
-        return { filename: f.filename, result: response.parsed_output, error: null as string | null };
-      } catch (e) {
-        return { filename: f.filename, result: null as PlanReviewResult | null, error: e instanceof Error ? e.message : "review failed" };
-      } finally {
-        await client.files.delete(uploaded.id).catch(() => {});
-      }
-    })
-  );
-
-  const succeeded = results.filter((r): r is { filename: string; result: PlanReviewResult; error: null } => r.result !== null);
-  if (!succeeded.length) {
-    throw new Error(results.map((r) => `${r.filename}: ${r.error}`).join(" | "));
+    if (!response.parsed_output) throw new Error("Couldn't parse the AI review response.");
+    return response.parsed_output;
+  } finally {
+    await client.files.delete(uploaded.id).catch(() => {});
   }
-
-  const summaries = succeeded.map((r) => `${r.filename}: ${r.result.summary}`);
-  const failures = results.filter((r) => r.error).map((r) => `${r.filename} could not be reviewed (${r.error}).`);
-
-  return {
-    summary: [...summaries, ...failures].join(" "),
-    findings: succeeded.flatMap((r) => r.result.findings),
-  };
 }
