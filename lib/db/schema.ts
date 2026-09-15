@@ -57,6 +57,24 @@ export const dailyLogs = pgTable("daily_logs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Daily Job Safety Analysis — filled out by the foreman before work starts,
+// same open access as Daily Logs. Each crew member present taps to
+// acknowledge (an on-device "initial") that they reviewed it.
+export const jsaForms = pgTable("jsa_forms", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull(),
+  date: text("date").notNull(),
+  foreman: text("foreman"),
+  weather: text("weather"),
+  taskTypes: jsonb("task_types").$type<string[]>().default([]),
+  hazards: jsonb("hazards").$type<{ taskType: string; hazard: string; control: string }[]>().default([]),
+  ppe: jsonb("ppe").$type<string[]>().default([]),
+  additionalHazards: text("additional_hazards"),
+  emergencyInfo: text("emergency_info"),
+  crew: jsonb("crew").$type<{ name: string; acknowledgedAt: string | null }[]>().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // ---------- T&M billing (admin-only) ----------
 
 // $/hr by crew position, per project — negotiated rates differ by contract.

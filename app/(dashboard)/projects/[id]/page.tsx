@@ -2,12 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { projects, milestones, dailyLogs, lineItems, expenses, invoices, payApps, sovItems, sovEntries, billingRates, billingTasks, tmInvoices } from "@/lib/db/schema";
+import { projects, milestones, dailyLogs, lineItems, expenses, invoices, payApps, sovItems, sovEntries, billingRates, billingTasks, tmInvoices, jsaForms } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
 import MilestoneSection from "./milestone-section";
 import LogSection from "./log-section";
 import BudgetSection from "./budget-section";
 import BillingSection from "./billing-section";
+import JsaSection from "./jsa-section";
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -19,10 +20,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const isAdmin = current?.profile.role === "admin";
   const isTm = project.billingType === "tm";
 
-  const [projectMilestones, projectLogs, projectLineItems] = await Promise.all([
+  const [projectMilestones, projectLogs, projectLineItems, projectJsas] = await Promise.all([
     db.select().from(milestones).where(eq(milestones.projectId, id)),
     db.select().from(dailyLogs).where(eq(dailyLogs.projectId, id)),
     db.select().from(lineItems).where(eq(lineItems.projectId, id)),
+    db.select().from(jsaForms).where(eq(jsaForms.projectId, id)),
   ]);
 
   let budgetData: {
@@ -137,6 +139,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
       <div style={{ marginBottom: 20 }}>
         <MilestoneSection projectId={id} milestones={projectMilestones} />
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <JsaSection projectId={id} jsas={projectJsas} />
       </div>
 
       <LogSection projectId={id} logs={projectLogs} lineItems={projectLineItems} />
