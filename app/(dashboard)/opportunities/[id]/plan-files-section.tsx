@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { uploadPlanFile, deletePlanFile, getPlanFileDownloadUrl } from "./plan-files-actions";
+import { requestPlanFileUpload, confirmPlanFileUpload, deletePlanFile, getPlanFileDownloadUrl } from "./plan-files-actions";
 
 type PlanFile = { id: string; filename: string; fileSize: string; uploadedAt: Date };
 
@@ -13,11 +13,41 @@ export default function PlanFilesSection({ opportunityId, files }: { opportunity
 
   async function handleUpload(formData: FormData) {
     setError("");
+    const file = formData.get("file");
+    if (!(file instanceof File) || !file.size) {
+      setError("Choose a PDF file first.");
+      return;
+    }
+
     setUploading(true);
     try {
-      const result = await uploadPlanFile(opportunityId, formData);
-      if (result.error) setError(result.error);
-      else if (inputRef.current) inputRef.current.value = "";
+      const requested = await requestPlanFileUpload(opportunityId, file.name);
+      if (requested.error || !requested.uploadUrl || !requested.id || !requested.storageKey) {
+        setError(requested.error || "Couldn't start the upload.");
+        return;
+      }
+
+      const putResult = await fetch(requested.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": "application/pdf" },
+        body: file,
+      });
+      if (!putResult.ok) {
+        setError("Upload to storage failed. Please try again.");
+        return;
+      }
+
+      const confirmed = await confirmPlanFileUpload(opportunityId, {
+        id: requested.id,
+        filename: file.name,
+        storageKey: requested.storageKey,
+        fileSize: file.size,
+      });
+      if (confirmed.error) {
+        setError(confirmed.error);
+      } else if (inputRef.current) {
+        inputRef.current.value = "";
+      }
     } finally {
       setUploading(false);
     }

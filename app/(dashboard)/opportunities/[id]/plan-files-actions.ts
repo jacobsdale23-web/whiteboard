@@ -6,7 +6,7 @@ import { eq, and } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { planFiles } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
-import { uploadObject, deleteObject, getDownloadUrl } from "@/lib/storage/s3";
+import { deleteObject, getDownloadUrl, getUploadUrl } from "@/lib/storage/s3";
 
 async function requireAdmin() {
   const current = await getSessionAndProfile();
@@ -15,25 +15,35 @@ async function requireAdmin() {
   }
 }
 
-export async function uploadPlanFile(opportunityId: string, formData: FormData): Promise<{ error?: string }> {
+// Plan/spec PDFs (full drawing sets) routinely exceed Vercel's serverless
+// function payload limit, so the file bytes go browser -> storage directly
+// via a presigned URL. This just hands out that URL plus the DB row's future id/key.
+export async function requestPlanFileUpload(
+  opportunityId: string,
+  filename: string
+): Promise<{ error?: string; uploadUrl?: string; id?: string; storageKey?: string }> {
   await requireAdmin();
-  const file = formData.get("file");
-  if (!(file instanceof File) || !file.size) return { error: "Choose a PDF file first." };
-  if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+  if (!filename.toLowerCase().endsWith(".pdf")) {
     return { error: "Only PDF files are accepted." };
   }
 
   const id = randomUUID();
-  const storageKey = `opportunities/${opportunityId}/${id}-${file.name}`;
-  const buf = Buffer.from(await file.arrayBuffer());
+  const storageKey = `opportunities/${opportunityId}/${id}-${filename}`;
+  const uploadUrl = await getUploadUrl(storageKey, "application/pdf");
+  return { uploadUrl, id, storageKey };
+}
 
-  await uploadObject(storageKey, buf, "application/pdf");
+export async function confirmPlanFileUpload(
+  opportunityId: string,
+  file: { id: string; filename: string; storageKey: string; fileSize: number }
+): Promise<{ error?: string }> {
+  await requireAdmin();
   await db.insert(planFiles).values({
-    id,
+    id: file.id,
     opportunityId,
-    filename: file.name,
-    storageKey,
-    fileSize: buf.length as never,
+    filename: file.filename,
+    storageKey: file.storageKey,
+    fileSize: file.fileSize as never,
   });
 
   revalidatePath(`/opportunities/${opportunityId}`);

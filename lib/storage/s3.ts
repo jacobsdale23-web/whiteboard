@@ -23,6 +23,12 @@ export async function getDownloadUrl(key: string): Promise<string> {
   return getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: key }), { expiresIn: 300 });
 }
 
+// Short-lived signed PUT URL so large files can go browser -> storage
+// directly, bypassing Vercel's serverless function payload limit.
+export async function getUploadUrl(key: string, contentType: string): Promise<string> {
+  return getSignedUrl(s3, new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: contentType }), { expiresIn: 300 });
+}
+
 // Raw bytes, for server-side use (e.g. handing a PDF straight to Claude).
 export async function getObjectBuffer(key: string): Promise<Buffer> {
   const result = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
