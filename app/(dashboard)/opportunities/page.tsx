@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { db } from "@/lib/db";
 import { opportunities } from "@/lib/db/schema";
 import OpportunityFormModal from "./opportunity-form-modal";
@@ -36,7 +37,9 @@ export default async function OpportunitiesPage() {
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
               <div>
-                <h3 style={{ fontSize: "1.05rem" }}>{o.jobName}</h3>
+                <Link href={`/opportunities/${o.id}`} style={{ color: "inherit", textDecoration: "none" }}>
+                  <h3 style={{ fontSize: "1.05rem", textDecoration: "underline" }}>{o.jobName}</h3>
+                </Link>
                 <div style={{ color: "var(--muted)", fontSize: "0.8rem" }}>{o.location}</div>
               </div>
               <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>

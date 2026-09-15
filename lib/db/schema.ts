@@ -221,3 +221,46 @@ export const opportunities = pgTable("opportunities", {
   convertedProjectId: text("converted_project_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// ---------- estimating (admin-only, same sensitivity as Budget) ----------
+
+// One line item on a bid. Category replaces generic CSI codes with the
+// company's actual scope of work so the builder reads like their trade.
+export const bidItems = pgTable("bid_items", {
+  id: text("id").primaryKey(),
+  opportunityId: text("opportunity_id").notNull(),
+  itemNo: text("item_no").notNull(),
+  category: text("category").notNull().default("General"),
+  description: text("description"),
+  qty: numeric("qty").notNull().default("0"),
+  unit: text("unit"),
+  unitPrice: numeric("unit_price").notNull().default("0"),
+  notes: text("notes"),
+  order: numeric("order").notNull().default("0"),
+});
+
+// One row per opportunity: cover-sheet contact info, the overhead/profit/
+// contingency/tax markup applied to the bid-items subtotal, and the terms
+// & signature block. jobType is free text for now — it's what Phase 2's
+// "similar past bid" matching will key off once that's built.
+export const estimateDetails = pgTable("estimate_details", {
+  opportunityId: text("opportunity_id").primaryKey(),
+  bidNumber: text("bid_number"),
+  bidValidUntil: text("bid_valid_until"),
+  jobType: text("job_type"),
+  contactName: text("contact_name"),
+  contactPhone: text("contact_phone"),
+  contactEmail: text("contact_email"),
+  overheadPercent: numeric("overhead_percent").notNull().default("10"),
+  profitPercent: numeric("profit_percent").notNull().default("8"),
+  contingencyPercent: numeric("contingency_percent").notNull().default("3"),
+  salesTaxPercent: numeric("sales_tax_percent").notNull().default("0"),
+  bondInsuranceCost: numeric("bond_insurance_cost").notNull().default("0"),
+  scopeInclusions: text("scope_inclusions"),
+  scopeExclusions: text("scope_exclusions"),
+  paymentTerms: text("payment_terms"),
+  scheduleDuration: text("schedule_duration"),
+  warranty: text("warranty"),
+  additionalNotes: text("additional_notes"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
