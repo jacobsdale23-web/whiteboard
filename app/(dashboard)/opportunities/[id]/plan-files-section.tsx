@@ -1,11 +1,13 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { requestPlanFileUpload, confirmPlanFileUpload, deletePlanFile, getPlanFileDownloadUrl } from "./plan-files-actions";
 
 type PlanFile = { id: string; filename: string; fileSize: string; uploadedAt: Date };
 
 export default function PlanFilesSection({ opportunityId, files }: { opportunityId: string; files: PlanFile[] }) {
+  const router = useRouter();
   const [, startTransition] = useTransition();
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
@@ -45,8 +47,9 @@ export default function PlanFilesSection({ opportunityId, files }: { opportunity
       });
       if (confirmed.error) {
         setError(confirmed.error);
-      } else if (inputRef.current) {
-        inputRef.current.value = "";
+      } else {
+        if (inputRef.current) inputRef.current.value = "";
+        router.refresh();
       }
     } finally {
       setUploading(false);

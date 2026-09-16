@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { reviewSinglePlanFile, savePlanReview, deletePlanReview } from "./plan-review-actions";
 
 type Finding = { severity: "high" | "medium" | "low"; category: string; title: string; description: string; suggestedBidCategory: string | null };
@@ -14,6 +15,7 @@ const SEVERITY_STYLE: Record<Finding["severity"], { bg: string; fg: string; icon
 };
 
 export default function PlanReviewSection({ opportunityId, reviews, files }: { opportunityId: string; reviews: PlanReview[]; files: PlanFileRef[] }) {
+  const router = useRouter();
   const [, startTransition] = useTransition();
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
@@ -47,7 +49,10 @@ export default function PlanReviewSection({ opportunityId, reviews, files }: { o
         findings: succeeded.flatMap((o) => o.result!.findings),
       });
       if (saved.error) setError(saved.error);
-      else if (failures.length) setError(failures.join(" "));
+      else {
+        if (failures.length) setError(failures.join(" "));
+        router.refresh();
+      }
     } finally {
       setRunning(false);
     }

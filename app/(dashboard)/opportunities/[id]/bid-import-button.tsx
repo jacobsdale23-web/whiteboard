@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { requestBidImportUpload, splitBidImportFile, extractBidImportChunk, saveBidImportItems } from "./bid-import-actions";
 
 export default function BidImportButton({ opportunityId }: { opportunityId: string }) {
+  const router = useRouter();
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState("");
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -108,6 +110,11 @@ export default function BidImportButton({ opportunityId }: { opportunityId: stri
         text: `Imported ${saved.imported} item${saved.imported === 1 ? "" : "s"}.${noteText ? ` Note: ${noteText}` : ""}`,
       });
       formRef.current?.reset();
+      // revalidatePath (inside saveBidImportItems) only marks the route's
+      // cache stale -- it doesn't by itself re-render this already-loaded
+      // page. router.refresh() re-fetches the current route's server data
+      // so the new bid items actually show up without a manual reload.
+      router.refresh();
     } finally {
       setImporting(false);
       setProgress("");
