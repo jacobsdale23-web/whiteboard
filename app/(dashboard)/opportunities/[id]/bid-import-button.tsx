@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { importBidItemsFromPdf } from "./bid-import-actions";
+import { requestBidImportUpload, splitBidImportFile, extractBidImportChunk, saveBidImportItems } from "./bid-import-actions";
 
 export default function BidImportButton({ opportunityId }: { opportunityId: string }) {
   const [importing, setImporting] = useState(false);
@@ -10,20 +10,79 @@ export default function BidImportButton({ opportunityId }: { opportunityId: stri
   const formRef = useRef<HTMLFormElement>(null);
 
   async function handleImport(formData: FormData) {
-    if (!confirm("Extract line items from this PDF with Claude? This uses paid API usage (typically well under $1 per import).")) return;
+    const file = formData.get("file");
+    if (!(file instanceof File) || !file.size) {
+      setMessage({ type: "error", text: "Choose a PDF file first." });
+      return;
+    }
+    if (
+      !confirm(
+        "Extract line items from this PDF with Claude? This uses paid API usage — typically well under $1 for a short form, a few dollars for a long multi-page rate schedule."
+      )
+    )
+      return;
+
     setMessage(null);
     setImporting(true);
     try {
-      const result = await importBidItemsFromPdf(opportunityId, formData);
-      if (result.error) {
-        setMessage({ type: "error", text: result.error });
-      } else {
-        setMessage({
-          type: "success",
-          text: `Imported ${result.imported} item${result.imported === 1 ? "" : "s"}.${result.notes ? ` Note: ${result.notes}` : ""}`,
-        });
-        formRef.current?.reset();
+      const uploaded = await requestBidImportUpload(opportunityId, file.name);
+      if (uploaded.error || !uploaded.uploadUrl || !uploaded.storageKey) {
+        setMessage({ type: "error", text: uploaded.error || "Couldn't start the upload." });
+        return;
       }
+
+      const putResult = await fetch(uploaded.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": "application/pdf" },
+        body: file,
+      });
+      if (!putResult.ok) {
+        setMessage({ type: "error", text: "Upload to storage failed. Please try again." });
+        return;
+      }
+
+      const split = await splitBidImportFile(opportunityId, uploaded.storageKey, file.name);
+      if (split.error || !split.chunks) {
+        setMessage({ type: "error", text: split.error || "Couldn't process that PDF." });
+        return;
+      }
+
+      // One server action call per chunk so each chunk's Claude call gets
+      // its own Vercel execution window. allSettled (not all) because a
+      // chunk can still fail at the network/infra level (e.g. a timeout on
+      // an unusually dense chunk) -- that must not wipe out the other
+      // chunks' already-extracted items along with it.
+      const settled = await Promise.allSettled(
+        split.chunks.map((c) => extractBidImportChunk(c.storageKey, c.filename))
+      );
+      const outcomes = settled.map((s, i) =>
+        s.status === "fulfilled"
+          ? s.value
+          : { filename: split.chunks![i].filename, error: s.reason instanceof Error ? s.reason.message : "Extraction timed out or failed." }
+      );
+
+      const succeeded = outcomes.filter((o) => o.result);
+      if (!succeeded.length) {
+        setMessage({ type: "error", text: outcomes.map((o) => `${o.filename}: ${o.error}`).join(" | ") });
+        return;
+      }
+
+      const items = succeeded.flatMap((o) => o.result!.items);
+      const notes = succeeded.map((o) => o.result!.notes).filter(Boolean);
+      const failures = outcomes.filter((o) => o.error).map((o) => `${o.filename} could not be processed (${o.error}).`);
+
+      const saved = await saveBidImportItems(opportunityId, items);
+      if (saved.error) {
+        setMessage({ type: "error", text: saved.error });
+        return;
+      }
+
+      const noteText = [...notes, ...failures].join(" ");
+      setMessage({
+        type: failures.length ? "error" : "success",
+        text: `Imported ${saved.imported} item${saved.imported === 1 ? "" : "s"}.${noteText ? ` Note: ${noteText}` : ""}`,
+      });
+      formRef.current?.reset();
     } finally {
       setImporting(false);
     }
