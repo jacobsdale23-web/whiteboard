@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { saveBidItem, deleteBidItem, saveEstimateDetails, exportEstimateExcel, type BidItemInput, type EstimateDetailsInput } from "./estimate-actions";
 import { BID_CATEGORIES, computeEstimateSummary } from "@/lib/estimate";
 import BidImportButton from "./bid-import-button";
@@ -37,8 +38,11 @@ type EstimateDetails = {
 } | null;
 
 export default function EstimateSection({ opportunityId, items, details }: { opportunityId: string; items: BidItem[]; details: EstimateDetails }) {
+  const router = useRouter();
   const [, startTransition] = useTransition();
   const [exporting, setExporting] = useState(false);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [detailsSaved, setDetailsSaved] = useState(false);
   const [markup, setMarkup] = useState({
     overheadPercent: details?.overheadPercent ?? "10",
     profitPercent: details?.profitPercent ?? "8",
@@ -70,7 +74,19 @@ export default function EstimateSection({ opportunityId, items, details }: { opp
       warranty: String(formData.get("warranty") || ""),
       additionalNotes: String(formData.get("additionalNotes") || ""),
     };
-    await saveEstimateDetails(opportunityId, data);
+    setSavingDetails(true);
+    setDetailsSaved(false);
+    try {
+      await saveEstimateDetails(opportunityId, data);
+      // Bid Value on the opportunity (card/board/list) is recomputed from
+      // the current bid items whenever details are saved -- refresh so it
+      // (and this page) actually reflect the new number instead of the
+      // stale one from before the save.
+      router.refresh();
+      setDetailsSaved(true);
+    } finally {
+      setSavingDetails(false);
+    }
   }
 
   async function handleExport() {
@@ -221,9 +237,12 @@ export default function EstimateSection({ opportunityId, items, details }: { opp
           <textarea name="additionalNotes" rows={2} defaultValue={details?.additionalNotes || ""} style={{ ...inputStyle, resize: "vertical" }} />
         </Field>
 
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
-          <button type="submit" style={primaryBtnStyle}>
-            Save Estimate Details
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, marginTop: 8 }}>
+          {detailsSaved && !savingDetails && (
+            <span style={{ fontSize: "0.8rem", color: "var(--active, #2e7d32)" }}>Saved — Bid Value updated.</span>
+          )}
+          <button type="submit" disabled={savingDetails} style={primaryBtnStyle}>
+            {savingDetails ? "Saving…" : "Save Estimate Details"}
           </button>
         </div>
       </form>

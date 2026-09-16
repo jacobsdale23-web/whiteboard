@@ -101,7 +101,25 @@ export async function saveEstimateDetails(opportunityId: string, data: EstimateD
     .insert(estimateDetails)
     .values({ opportunityId, ...values })
     .onConflictDoUpdate({ target: estimateDetails.opportunityId, set: values });
+
+  // Keep the opportunity's Bid Value (shown on the card/board/list) in sync
+  // with the estimate's own math instead of requiring a second manual entry.
+  const items = await db.select().from(bidItems).where(eq(bidItems.opportunityId, opportunityId));
+  const summary = computeEstimateSummary(
+    items.map((i) => ({ qty: i.qty, unitPrice: i.unitPrice })),
+    {
+      overheadPercent: data.overheadPercent,
+      profitPercent: data.profitPercent,
+      contingencyPercent: data.contingencyPercent,
+      salesTaxPercent: data.salesTaxPercent,
+      bondInsuranceCost: data.bondInsuranceCost,
+    }
+  );
+  await db.update(opportunities).set({ bidValue: summary.totalBidPrice as never }).where(eq(opportunities.id, opportunityId));
+
   revalidatePath(`/opportunities/${opportunityId}`);
+  revalidatePath("/opportunities");
+  revalidatePath("/board");
 }
 
 export async function exportEstimateExcel(opportunityId: string): Promise<{ filename: string; base64: string }> {
