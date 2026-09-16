@@ -1,13 +1,27 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { requestBidImportUpload, splitBidImportFile, extractBidImportChunk, saveBidImportItems } from "./bid-import-actions";
 
 export default function BidImportButton({ opportunityId }: { opportunityId: string }) {
   const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState("");
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+
+  // A large multi-chunk import can take several minutes with no browser
+  // network activity to hint it's still running -- warn before an
+  // accidental close/refresh discards it (the completed chunks are already
+  // real, paid-for API calls; losing them at the last step is a waste).
+  useEffect(() => {
+    if (!importing) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [importing]);
 
   async function handleImport(formData: FormData) {
     const file = formData.get("file");
@@ -17,13 +31,14 @@ export default function BidImportButton({ opportunityId }: { opportunityId: stri
     }
     if (
       !confirm(
-        "Extract line items from this PDF with Claude? This uses paid API usage — typically well under $1 for a short form, a few dollars for a long multi-page rate schedule."
+        "Extract line items from this PDF with Claude? This uses paid API usage — typically well under $1 for a short form, a few dollars for a long multi-page rate schedule. Large schedules can take several minutes; keep this tab open until it finishes."
       )
     )
       return;
 
     setMessage(null);
     setImporting(true);
+    setProgress("Uploading file…");
     try {
       const uploaded = await requestBidImportUpload(opportunityId, file.name);
       if (uploaded.error || !uploaded.uploadUrl || !uploaded.storageKey) {
@@ -41,6 +56,7 @@ export default function BidImportButton({ opportunityId }: { opportunityId: stri
         return;
       }
 
+      setProgress("Splitting into chunks…");
       const split = await splitBidImportFile(opportunityId, uploaded.storageKey, file.name);
       if (split.error || !split.chunks) {
         setMessage({ type: "error", text: split.error || "Couldn't process that PDF." });
@@ -52,8 +68,16 @@ export default function BidImportButton({ opportunityId }: { opportunityId: stri
       // chunk can still fail at the network/infra level (e.g. a timeout on
       // an unusually dense chunk) -- that must not wipe out the other
       // chunks' already-extracted items along with it.
+      const total = split.chunks.length;
+      let done = 0;
+      setProgress(`Extracting 0/${total} chunk${total === 1 ? "" : "s"}…`);
       const settled = await Promise.allSettled(
-        split.chunks.map((c) => extractBidImportChunk(c.storageKey, c.filename))
+        split.chunks.map((c) =>
+          extractBidImportChunk(c.storageKey, c.filename).finally(() => {
+            done++;
+            setProgress(`Extracting ${done}/${total} chunk${total === 1 ? "" : "s"}…`);
+          })
+        )
       );
       const outcomes = settled.map((s, i) =>
         s.status === "fulfilled"
@@ -71,6 +95,7 @@ export default function BidImportButton({ opportunityId }: { opportunityId: stri
       const notes = succeeded.map((o) => o.result!.notes).filter(Boolean);
       const failures = outcomes.filter((o) => o.error).map((o) => `${o.filename} could not be processed (${o.error}).`);
 
+      setProgress("Saving items…");
       const saved = await saveBidImportItems(opportunityId, items);
       if (saved.error) {
         setMessage({ type: "error", text: saved.error });
@@ -85,6 +110,7 @@ export default function BidImportButton({ opportunityId }: { opportunityId: stri
       formRef.current?.reset();
     } finally {
       setImporting(false);
+      setProgress("");
     }
   }
 
@@ -96,6 +122,11 @@ export default function BidImportButton({ opportunityId }: { opportunityId: stri
           {importing ? "Importing…" : "Import from PDF"}
         </button>
       </form>
+      {importing && (
+        <p style={{ fontSize: "0.76rem", maxWidth: 320, textAlign: "right", color: "var(--muted)" }}>
+          {progress} Keep this tab open — don&rsquo;t navigate away.
+        </p>
+      )}
       {message && (
         <p style={{ fontSize: "0.76rem", maxWidth: 320, textAlign: "right", color: message.type === "error" ? "var(--danger)" : "var(--active, #2e7d32)" }}>
           {message.text}
