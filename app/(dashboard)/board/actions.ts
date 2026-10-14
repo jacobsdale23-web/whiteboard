@@ -32,8 +32,8 @@ export async function saveProject(id: string | null, data: ProjectInput) {
   const justActivated = data.status === "active" && (!existing || existing.status !== "active");
   if (!projectNumber && justActivated && data.billingType === "lump_sum") {
     const year = data.startDate ? parseInt(data.startDate.slice(0, 4), 10) : new Date().getFullYear();
-    const lumpSumNumbers = await db.select({ projectNumber: projects.projectNumber }).from(projects).where(eq(projects.billingType, "lump_sum"));
-    projectNumber = computeNextProjectNumber(lumpSumNumbers.map((r) => r.projectNumber), year);
+    const allNumbers = await db.select({ projectNumber: projects.projectNumber }).from(projects);
+    projectNumber = computeNextProjectNumber(allNumbers.map((r) => r.projectNumber), year);
   }
 
   const values = {
