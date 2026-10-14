@@ -34,6 +34,29 @@ function fmt(d: Date, opts: Intl.DateTimeFormatOptions): string {
 
 type Item = { project: GanttProject; bar: Bar };
 
+export type CalendarEvent = {
+  id: string;
+  name: string;
+  location: string | null;
+  date: string;
+  kind: "Bid Due" | "Meeting";
+  customer: string | null;
+  estimator: string | null;
+};
+
+const EVENT_COLORS: Record<CalendarEvent["kind"], string> = {
+  "Bid Due": "var(--upcoming)",
+  Meeting: "var(--shop)",
+};
+
+function eventDate(e: CalendarEvent): Date {
+  return new Date(e.date + "T00:00:00");
+}
+
+function eventsOn(events: CalendarEvent[], day: Date): CalendarEvent[] {
+  return events.filter((e) => dayDiff(eventDate(e), day) === 0);
+}
+
 function useItems(projects: GanttProject[]): Item[] {
   return useMemo(() => {
     const items: Item[] = [];
@@ -46,7 +69,7 @@ function useItems(projects: GanttProject[]): Item[] {
   }, [projects]);
 }
 
-export default function CalendarView({ projects }: { projects: GanttProject[] }) {
+export default function CalendarView({ projects, events }: { projects: GanttProject[]; events: CalendarEvent[] }) {
   const [mode, setMode] = useState<Mode>("timeline");
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
   const items = useItems(projects);
@@ -92,9 +115,14 @@ export default function CalendarView({ projects }: { projects: GanttProject[] })
         )}
       </div>
 
-      {mode === "timeline" && <GanttChart projects={projects} />}
-      {mode === "week" && <WeekView items={items} weekStart={startOfWeek(anchor)} today={today} />}
-      {mode === "day" && <DayView items={items} day={anchor} />}
+      {mode === "timeline" && (
+        <>
+          <GanttChart projects={projects} />
+          <UpcomingEvents events={events} today={today} />
+        </>
+      )}
+      {mode === "week" && <WeekView items={items} events={events} weekStart={startOfWeek(anchor)} today={today} />}
+      {mode === "day" && <DayView items={items} events={events} day={anchor} />}
     </div>
   );
 }
@@ -119,8 +147,48 @@ function NavButton({ onClick, children }: { onClick: () => void; children: React
   );
 }
 
-function WeekView({ items, weekStart, today }: { items: Item[]; weekStart: Date; today: Date }) {
+function UpcomingEvents({ events, today }: { events: CalendarEvent[]; today: Date }) {
+  const upcoming = events
+    .filter((e) => dayDiff(eventDate(e), today) >= 0)
+    .sort((a, b) => eventDate(a).getTime() - eventDate(b).getTime());
+  if (!upcoming.length) return null;
+  return (
+    <div style={{ marginTop: 24 }}>
+      <h3 style={{ marginBottom: 10, fontSize: "0.95rem" }}>Upcoming bid dates &amp; meetings</h3>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {upcoming.map((e) => (
+          <div
+            key={e.id}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderLeft: `4px solid ${EVENT_COLORS[e.kind]}`,
+              borderRadius: 8,
+              padding: "8px 12px",
+              fontSize: "0.85rem",
+            }}
+          >
+            <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, minWidth: 96 }}>
+              {fmt(eventDate(e), { weekday: "short", month: "short", day: "numeric" })}
+            </span>
+            <DayTag>{e.kind}</DayTag>
+            <Link href={`/opportunities/${e.id}`} style={{ color: "inherit", fontWeight: 600 }}>
+              {e.name}
+            </Link>
+            {e.customer && <span style={{ color: "var(--muted)" }}>{e.customer}</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WeekView({ items, events, weekStart, today }: { items: Item[]; events: CalendarEvent[]; weekStart: Date; today: Date }) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const hasEvents = days.some((d) => eventsOn(events, d).length > 0);
   const visible = items.filter((x) => dayDiff(x.bar.end, weekStart) >= 0 && dayDiff(x.bar.start, weekStart) <= 6);
 
   return (
@@ -149,6 +217,48 @@ function WeekView({ items, weekStart, today }: { items: Item[]; weekStart: Date;
           );
         })}
       </div>
+
+      {hasEvents && (
+        <div style={{ display: "grid", gridTemplateColumns: "200px repeat(7, 1fr)", borderBottom: "1px solid var(--border)" }}>
+          <div style={{ padding: "8px 14px", fontSize: "0.72rem", textTransform: "uppercase", color: "var(--muted)", fontWeight: 700 }}>
+            Bids &amp; Meetings
+          </div>
+          {days.map((d) => (
+            <div
+              key={d.getTime()}
+              style={{
+                borderLeft: "1px solid var(--border)",
+                padding: 4,
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                background: dayDiff(d, today) === 0 ? "var(--surface-2)" : undefined,
+              }}
+            >
+              {eventsOn(events, d).map((e) => (
+                <Link
+                  key={e.id}
+                  href={`/opportunities/${e.id}`}
+                  title={`${e.kind}: ${e.name}`}
+                  style={{
+                    background: EVENT_COLORS[e.kind],
+                    color: "#fff",
+                    borderRadius: 5,
+                    padding: "4px 6px",
+                    fontSize: "0.7rem",
+                    fontWeight: 600,
+                    textDecoration: "none",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div style={{ opacity: 0.85, textTransform: "uppercase", fontSize: "0.62rem" }}>{e.kind}</div>
+                  {e.name}
+                </Link>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
 
       {visible.map(({ project, bar }) => {
         const startCol = Math.max(0, dayDiff(bar.start, weekStart));
@@ -202,20 +312,46 @@ function WeekView({ items, weekStart, today }: { items: Item[]; weekStart: Date;
         );
       })}
 
-      {!visible.length && <div style={{ color: "var(--muted)", padding: 20 }}>Nothing scheduled this week.</div>}
+      {!visible.length && !hasEvents && <div style={{ color: "var(--muted)", padding: 20 }}>Nothing scheduled this week.</div>}
     </div>
   );
 }
 
-function DayView({ items, day }: { items: Item[]; day: Date }) {
+function DayView({ items, events, day }: { items: Item[]; events: CalendarEvent[]; day: Date }) {
   const visible = items.filter((x) => dayDiff(x.bar.start, day) <= 0 && dayDiff(x.bar.end, day) >= 0);
+  const dayEvents = eventsOn(events, day);
 
-  if (!visible.length) {
+  if (!visible.length && !dayEvents.length) {
     return <div style={{ color: "var(--muted)", padding: 20 }}>Nothing scheduled for this day.</div>;
   }
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
+      {dayEvents.map((e) => (
+        <div
+          key={e.id}
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderLeft: `4px solid ${EVENT_COLORS[e.kind]}`,
+            borderRadius: 10,
+            padding: 16,
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+          }}
+        >
+          <Link href={`/opportunities/${e.id}`} style={{ color: "inherit", textDecoration: "underline", fontWeight: 700 }}>
+            {e.name}
+          </Link>
+          {e.location && <div style={{ color: "var(--muted)", fontSize: "0.8rem" }}>{e.location}</div>}
+          <div>
+            <DayTag>{e.kind === "Bid Due" ? "Bid due today" : "Meeting"}</DayTag>
+          </div>
+          {e.customer && <Row label="Customer" value={e.customer} />}
+          {e.estimator && <Row label="Estimator" value={e.estimator} />}
+        </div>
+      ))}
       {visible.map(({ project, bar }) => {
         const starts = dayDiff(bar.start, day) === 0;
         const ends = dayDiff(bar.end, day) === 0;
