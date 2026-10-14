@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { computeBar, addDays, startOfMonth, type GanttProject, type Bar } from "@/lib/gantt";
 
 const DAY_MS = 86400000;
@@ -93,6 +93,12 @@ const BAR_COLORS: Record<string, string> = {
 export default function GanttChart({ projects }: { projects: GanttProject[] }) {
   const layout = useMemo(() => buildLayout(projects), [projects]);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; project: GanttProject } | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = Math.max(0, layout.todayX - el.clientWidth * 0.25);
+  }, [layout.todayX, layout.rows.length]);
 
   if (!layout.rows.length) {
     return <div style={{ color: "var(--muted)", padding: 20 }}>Nothing on the calendar yet.</div>;
@@ -157,7 +163,7 @@ export default function GanttChart({ projects }: { projects: GanttProject[] }) {
             )
           )}
         </div>
-        <div style={{ overflowX: "auto", flex: 1 }}>
+        <div ref={scrollRef} style={{ overflowX: "auto", flex: 1 }}>
           <div style={{ position: "relative", width: layout.totalWidth }}>
             <div style={{ position: "relative", height: 36, borderBottom: "1px solid var(--border)" }}>
               {layout.months.map((m, i) => (
