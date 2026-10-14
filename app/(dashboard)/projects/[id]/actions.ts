@@ -2,9 +2,9 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { milestones, dailyLogs } from "@/lib/db/schema";
+import { milestones, dailyLogs, leakNumbers, billingTasks } from "@/lib/db/schema";
 
 // ---------- schedule (milestones) ----------
 
@@ -28,14 +28,22 @@ export async function deleteMilestone(projectId: string, id: string) {
 
 // ---------- daily logs ----------
 
+const NEW_OPTION = "__new__";
+
+// A dropdown value, or the typed-in value when "Add new…" was chosen.
+function pickedValue(formData: FormData, name: string): string {
+  const v = String(formData.get(name) || "").trim();
+  return v === NEW_OPTION ? String(formData.get(`${name}New`) || "").trim() : v;
+}
+
 export async function addLog(projectId: string, formData: FormData) {
   const date = String(formData.get("date") || "");
-  const leakNumber = String(formData.get("leakNumber") || "").trim() || "N/A";
+  const leakNumber = pickedValue(formData, "leakNumber") || "N/A";
   const foreman = String(formData.get("foreman") || "").trim();
   const lineItem = String(formData.get("lineItem") || "").trim() || null;
   const description = String(formData.get("description") || "").trim();
   const address = String(formData.get("address") || "").trim() || null;
-  const taskNumber = String(formData.get("taskNumber") || "").trim() || null;
+  const taskNumber = pickedValue(formData, "taskNumber") || null;
   const locusviewNumber = String(formData.get("locusviewNumber") || "").trim() || null;
 
   const names = formData.getAll("crewName");
@@ -46,6 +54,15 @@ export async function addLog(projectId: string, formData: FormData) {
     .filter((c) => c.name);
 
   if (!date || !foreman || !description) return;
+
+  if (leakNumber !== "N/A") {
+    const known = await db.select().from(leakNumbers).where(and(eq(leakNumbers.projectId, projectId), eq(leakNumbers.leakNumber, leakNumber)));
+    if (!known.length) await db.insert(leakNumbers).values({ id: randomUUID(), projectId, leakNumber, address });
+  }
+  if (taskNumber) {
+    const known = await db.select().from(billingTasks).where(and(eq(billingTasks.projectId, projectId), eq(billingTasks.taskNumber, taskNumber)));
+    if (!known.length) await db.insert(billingTasks).values({ id: randomUUID(), projectId, taskNumber });
+  }
 
   await db.insert(dailyLogs).values({
     id: randomUUID(),

@@ -18,6 +18,7 @@ export type ProjectInput = {
   crew: string[];
   billingType: string;
   projectNumber: string | null;
+  customer: string | null;
 };
 
 export async function saveProject(id: string | null, data: ProjectInput) {
@@ -47,6 +48,7 @@ export async function saveProject(id: string | null, data: ProjectInput) {
     crew: data.crew,
     billingType: data.billingType,
     projectNumber,
+    customer: data.customer?.trim() || null,
   };
 
   if (id) {

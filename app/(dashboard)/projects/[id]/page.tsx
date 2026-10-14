@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { projects, milestones, dailyLogs, lineItems, expenses, invoices, payApps, sovItems, sovEntries, billingRates, billingTasks, tmInvoices, jsaForms } from "@/lib/db/schema";
+import { projects, milestones, dailyLogs, lineItems, expenses, invoices, payApps, sovItems, sovEntries, billingRates, billingTasks, tmInvoices, jsaForms, leakNumbers } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
 import MilestoneSection from "./milestone-section";
 import LogSection from "./log-section";
@@ -20,11 +20,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const isAdmin = current?.profile.role === "admin";
   const isTm = project.billingType === "tm";
 
-  const [projectMilestones, projectLogs, projectLineItems, projectJsas] = await Promise.all([
+  const [projectMilestones, projectLogs, projectLineItems, projectJsas, projectLeakNumbers, projectTaskNumbers] = await Promise.all([
     db.select().from(milestones).where(eq(milestones.projectId, id)),
     db.select().from(dailyLogs).where(eq(dailyLogs.projectId, id)),
     db.select().from(lineItems).where(eq(lineItems.projectId, id)),
     db.select().from(jsaForms).where(eq(jsaForms.projectId, id)),
+    db.select().from(leakNumbers).where(eq(leakNumbers.projectId, id)),
+    db.select({ taskNumber: billingTasks.taskNumber }).from(billingTasks).where(eq(billingTasks.projectId, id)),
   ]);
 
   let budgetData: {
@@ -100,6 +102,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               </span>
             )}
             <h1 style={{ fontSize: "1.6rem", marginTop: 6 }}>{project.name}</h1>
+            {project.customer && <div style={{ color: "var(--ink-soft)", fontWeight: 600 }}>{project.customer}</div>}
             {project.location && <div style={{ color: "var(--muted)" }}>{project.location}</div>}
           </div>
         </div>
@@ -150,7 +153,15 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         <JsaSection projectId={id} jsas={projectJsas} />
       </div>
 
-      <LogSection projectId={id} logs={projectLogs} lineItems={projectLineItems} />
+      <LogSection
+        projectId={id}
+        logs={projectLogs}
+        lineItems={projectLineItems}
+        leakNumbers={projectLeakNumbers
+          .map((l) => ({ value: l.leakNumber, label: l.address ? `${l.leakNumber} — ${l.address}` : l.leakNumber }))
+          .sort((a, b) => b.value.localeCompare(a.value, undefined, { numeric: true }))}
+        taskNumbers={projectTaskNumbers.map((t) => t.taskNumber).sort()}
+      />
     </div>
   );
 }

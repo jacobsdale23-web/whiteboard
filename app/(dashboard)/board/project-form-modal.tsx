@@ -15,6 +15,7 @@ type ProjectRow = {
   crew: string[] | null;
   billingType: string;
   projectNumber: string | null;
+  customer: string | null;
 };
 type CrewMember = { id: string; name: string };
 
@@ -46,6 +47,7 @@ export default function ProjectFormModal({ project, crewList }: { project?: Proj
       crew,
       billingType: String(formData.get("billingType") || "lump_sum"),
       projectNumber: String(formData.get("projectNumber") || "").trim() || null,
+      customer: String(formData.get("customer") || "").trim() || null,
     };
     try {
       await saveProject(project?.id ?? null, data);
@@ -97,6 +99,9 @@ export default function ProjectFormModal({ project, crewList }: { project?: Proj
 
             <Field label="Project Name">
               <input type="text" name="name" required defaultValue={project?.name} style={inputStyle} />
+            </Field>
+            <Field label="Customer">
+              <input type="text" name="customer" defaultValue={project?.customer || ""} style={inputStyle} />
             </Field>
             <Field label="Location">
               <input type="text" name="location" defaultValue={project?.location || ""} style={inputStyle} />

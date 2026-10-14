@@ -26,6 +26,7 @@ export const projects = pgTable("projects", {
   // the client's own task/PO number instead (see billing_tasks). Assigned
   // automatically when a project becomes active; null before then.
   projectNumber: text("project_number"),
+  customer: text("customer"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -88,6 +89,16 @@ export const billingRates = pgTable("billing_rates", {
   projectId: text("project_id").notNull(),
   position: text("position").notNull(),
   hourlyRate: numeric("hourly_rate").notNull().default("0"),
+});
+
+// Leak numbers a project's foremen can pick from on a daily log. New ones
+// are added straight from the log form, so the list grows as work comes in.
+export const leakNumbers = pgTable("leak_numbers", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull(),
+  leakNumber: text("leak_number").notNull(),
+  address: text("address"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Persistent metadata for one recurring Atmos task/PO number, so weekly

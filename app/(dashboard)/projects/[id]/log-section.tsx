@@ -21,14 +21,52 @@ type LineItem = { itemNo: string; description: string | null };
 
 type CrewRow = { key: number };
 
+type Choice = { value: string; label: string };
+
+function PickOrAdd({
+  name,
+  options,
+  noneLabel,
+  noneValue,
+  newPlaceholder,
+}: {
+  name: string;
+  options: Choice[];
+  noneLabel: string;
+  noneValue: string;
+  newPlaceholder: string;
+}) {
+  const [value, setValue] = useState(noneValue);
+  return (
+    <>
+      <select name={name} value={value} onChange={(e) => setValue(e.target.value)} style={inputStyle}>
+        <option value={noneValue}>{noneLabel}</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+        <option value="__new__">+ Add new…</option>
+      </select>
+      {value === "__new__" && (
+        <input type="text" name={`${name}New`} required placeholder={newPlaceholder} style={{ ...inputStyle, marginTop: 6 }} />
+      )}
+    </>
+  );
+}
+
 export default function LogSection({
   projectId,
   logs,
   lineItems,
+  leakNumbers,
+  taskNumbers,
 }: {
   projectId: string;
   logs: LogEntry[];
   lineItems: LineItem[];
+  leakNumbers: Choice[];
+  taskNumbers: string[];
 }) {
   const [showForm, setShowForm] = useState(false);
   const [crewRows, setCrewRows] = useState<CrewRow[]>([{ key: 0 }]);
@@ -61,14 +99,20 @@ export default function LogSection({
             <input type="date" name="date" required style={inputStyle} defaultValue={new Date().toISOString().slice(0, 10)} />
           </Field>
           <Field label="Leak Number">
-            <input type="text" name="leakNumber" placeholder="N/A" style={inputStyle} />
+            <PickOrAdd name="leakNumber" options={leakNumbers} noneLabel="N/A" noneValue="N/A" newPlaceholder="New leak number" />
           </Field>
           <Field label="Foreman">
             <input type="text" name="foreman" required style={inputStyle} />
           </Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="Task / Project Number">
-              <input type="text" name="taskNumber" placeholder="e.g. 070.58526" style={inputStyle} />
+              <PickOrAdd
+                name="taskNumber"
+                options={taskNumbers.map((t) => ({ value: t, label: t }))}
+                noneLabel="— None —"
+                noneValue=""
+                newPlaceholder="New task number, e.g. 070.58526"
+              />
             </Field>
             <Field label="Locusview Number">
               <input type="text" name="locusviewNumber" style={inputStyle} />
