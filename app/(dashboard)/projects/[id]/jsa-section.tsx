@@ -105,7 +105,14 @@ export default function JsaSection({ projectId, jsas }: { projectId: string; jsa
           </div>
 
           <Field label="Additional Site-Specific Hazards / Notes">
-            <textarea name="additionalHazards" rows={3} style={{ ...inputStyle, resize: "vertical" }} />
+            <textarea
+              name="additionalHazards"
+              rows={3}
+              required
+              placeholder="Required — write “None” if there are none"
+              onInput={(e) => e.currentTarget.setCustomValidity(e.currentTarget.value.trim() ? "" : "Please fill out this field.")}
+              style={{ ...inputStyle, resize: "vertical" }}
+            />
           </Field>
           <Field label="Emergency Info (nearest hospital / address)">
             <input type="text" name="emergencyInfo" style={inputStyle} />

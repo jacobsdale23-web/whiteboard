@@ -10,12 +10,12 @@ import { HAZARD_LIBRARY } from "@/lib/jsa-library";
 export async function addJsa(projectId: string, formData: FormData) {
   const date = String(formData.get("date") || "");
   const foreman = String(formData.get("foreman") || "").trim();
-  if (!date || !foreman) return;
+  const additionalHazards = String(formData.get("additionalHazards") || "").trim();
+  if (!date || !foreman || !additionalHazards) return;
 
   const weather = String(formData.get("weather") || "").trim() || null;
   const taskTypes = formData.getAll("taskTypes").map(String);
   const ppe = formData.getAll("ppe").map(String);
-  const additionalHazards = String(formData.get("additionalHazards") || "").trim() || null;
   const emergencyInfo = String(formData.get("emergencyInfo") || "").trim() || null;
 
   const hazardKeys = formData.getAll("hazard").map(String); // "taskType||hazard"

@@ -165,7 +165,13 @@ export default function LogSection({
           </button>
 
           <Field label="Description of Work">
-            <textarea name="description" rows={4} required style={{ ...inputStyle, resize: "vertical" }} />
+            <textarea
+              name="description"
+              rows={4}
+              required
+              onInput={(e) => e.currentTarget.setCustomValidity(e.currentTarget.value.trim() ? "" : "Please fill out this field.")}
+              style={{ ...inputStyle, resize: "vertical" }}
+            />
           </Field>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
