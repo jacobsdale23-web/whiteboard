@@ -159,12 +159,20 @@ export async function buildWeeklyJsaReport(end: string): Promise<WeeklyReport> {
 }
 
 export async function emailWeeklyJsaReport(report: WeeklyReport): Promise<{ to: string[] }> {
-  const user = process.env.GMAIL_USER;
-  const pass = process.env.GMAIL_APP_PASSWORD;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASSWORD;
   const to = (process.env.JSA_REPORT_TO || "").split(",").map((s) => s.trim()).filter(Boolean);
-  if (!user || !pass || !to.length) throw new Error("GMAIL_USER, GMAIL_APP_PASSWORD and JSA_REPORT_TO must all be set.");
+  if (!user || !pass || !to.length) throw new Error("SMTP_USER, SMTP_PASSWORD and JSA_REPORT_TO must all be set.");
 
-  const transport = nodemailer.createTransport({ host: "smtp.gmail.com", port: 465, secure: true, auth: { user, pass } });
+  // Defaults are Microsoft 365 / Outlook; override SMTP_HOST / SMTP_PORT for another provider.
+  const port = Number(process.env.SMTP_PORT || 587);
+  const transport = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || "smtp.office365.com",
+    port,
+    secure: port === 465,
+    requireTLS: port !== 465,
+    auth: { user, pass },
+  });
   const total = report.crews.reduce((n, c) => n + c.jsaCount, 0);
   const lines = report.crews.map((c) => `  - ${c.foreman}: ${c.jsaCount} JSA${c.jsaCount === 1 ? "" : "s"}`);
   const text = total
