@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { addLog, deleteLog } from "./actions";
 
-const POSITIONS = ["Foreman", "Operator", "Laborer", "Welder", "Locusview Tech"];
+const POSITIONS = ["Foreman", "Operator", "Laborer", "Welder", "Fuser", "Flagger", "Locusview Tech"];
 
 type LogEntry = {
   id: string;
