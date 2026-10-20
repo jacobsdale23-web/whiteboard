@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { billingRates, billingTasks, tmInvoices, dailyLogs, projects } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
 import { buildInvoiceLineItems, sumLineItems, validateLineItems, findCrossCrewOverlaps, type TmLineItem } from "@/lib/tm-billing";
+import { RATE_SCHEDULES, type RateScheduleKey } from "@/lib/rate-schedules";
 import * as XLSX from "xlsx";
 
 // Real, server-enforced admin check — rates and invoice totals must never
@@ -26,6 +27,24 @@ export async function setBillingRate(projectId: string, position: string, hourly
     .values({ id, projectId, position, hourlyRate: hourlyRate as never })
     .onConflictDoUpdate({ target: billingRates.id, set: { hourlyRate: hourlyRate as never } });
   revalidatePath(`/projects/${projectId}`);
+}
+
+// Fills in a project's hourly rates from one of the standard schedules
+// (Louisiana / Jackson). Positions already on the project are overwritten with
+// the schedule's rate; positions outside the schedule are left alone.
+export async function applyRateSchedule(projectId: string, key: RateScheduleKey): Promise<{ error?: string }> {
+  await requireAdmin();
+  const schedule = RATE_SCHEDULES[key];
+  if (!schedule) return { error: "Unknown rate schedule." };
+  for (const [position, rate] of Object.entries(schedule.rates)) {
+    const id = `${projectId}-${position}`.toLowerCase().replace(/[^a-z0-9._-]/g, "_");
+    await db
+      .insert(billingRates)
+      .values({ id, projectId, position, hourlyRate: rate as never })
+      .onConflictDoUpdate({ target: billingRates.id, set: { hourlyRate: rate as never } });
+  }
+  revalidatePath(`/projects/${projectId}`);
+  return {};
 }
 
 export async function addBillingTask(projectId: string, formData: FormData) {

@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { POSITIONS } from "@/lib/positions";
+import { RATE_SCHEDULES, type RateScheduleKey } from "@/lib/rate-schedules";
 import {
   setBillingRate,
+  applyRateSchedule,
   addBillingTask,
   deleteBillingTask,
   generateInvoice,
@@ -78,9 +81,33 @@ export default function BillingSection({
 function RatesSubsection({ projectId, rates }: { projectId: string; rates: BillingRate[] }) {
   const [, startTransition] = useTransition();
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const [newPosition, setNewPosition] = useState("");
+  const [newRate, setNewRate] = useState("");
+  const [error, setError] = useState("");
+  const unset = POSITIONS.filter((p) => !rates.some((r) => r.position === p));
+
+  function apply(key: RateScheduleKey) {
+    const label = RATE_SCHEDULES[key].label;
+    if (rates.length && !confirm(`Apply the ${label} rates? This overwrites this project's current rate for every position on that schedule.`)) return;
+    setError("");
+    startTransition(async () => {
+      const res = await applyRateSchedule(projectId, key);
+      if (res.error) setError(res.error);
+    });
+  }
 
   return (
     <SubSection title="Hourly Rates by Position">
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
+        <span style={{ fontSize: "0.76rem", color: "var(--muted)" }}>Fill in from the standard rate sheet:</span>
+        <button onClick={() => apply("louisiana")} style={addBtnStyle}>
+          Apply Louisiana rates
+        </button>
+        <button onClick={() => apply("jackson")} style={addBtnStyle}>
+          Apply Jackson rates (Mississippi)
+        </button>
+        {error && <span style={{ color: "var(--danger)", fontSize: "0.78rem" }}>{error}</span>}
+      </div>
       {rates.length ? (
         rates
           .slice()
@@ -116,6 +143,35 @@ function RatesSubsection({ projectId, rates }: { projectId: string; rates: Billi
           })
       ) : (
         <Empty>No billing rates set for this project yet.</Empty>
+      )}
+      {unset.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginTop: 12 }}>
+          <span style={{ fontSize: "0.76rem", color: "var(--muted)" }}>Add a position:</span>
+          <select value={newPosition} onChange={(e) => setNewPosition(e.target.value)} style={{ ...inputStyle, width: "auto" }}>
+            <option value="">Choose…</option>
+            {unset.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+          <span style={{ fontFamily: "var(--font-mono)" }}>$</span>
+          <input type="number" min="0" step="0.01" placeholder="Rate" value={newRate} onChange={(e) => setNewRate(e.target.value)} style={{ ...inputStyle, width: 90 }} />
+          <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>/hr</span>
+          <button
+            disabled={!newPosition || !newRate}
+            onClick={() => {
+              const position = newPosition;
+              const rate = Number(newRate) || 0;
+              setNewPosition("");
+              setNewRate("");
+              startTransition(() => setBillingRate(projectId, position, rate));
+            }}
+            style={{ ...addBtnStyle, opacity: newPosition && newRate ? 1 : 0.5 }}
+          >
+            Add
+          </button>
+        </div>
       )}
     </SubSection>
   );
