@@ -17,12 +17,16 @@ export default function TicketControls({ id, status }: { id: string; status: str
     setSaved(false);
     startTransition(async () => {
       try {
-        await updateEquipmentTicket(id, newStatus, note);
+        const res = await updateEquipmentTicket(id, newStatus, note);
+        if (res.error) {
+          setError(res.error);
+          return;
+        }
         setNote("");
         setSaved(true);
         router.refresh();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Couldn't save.");
+      } catch {
+        setError("Couldn't save. Please try again.");
       }
     });
   }

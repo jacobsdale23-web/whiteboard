@@ -11,19 +11,19 @@ const STATUSES = ["open", "in_progress", "resolved"];
 
 // Server-enforced: only admins and mechanics can change a ticket. Every save
 // is logged with who did it, and resolving requires saying what was done.
-export async function updateEquipmentTicket(id: string, status: string, note: string) {
+export async function updateEquipmentTicket(id: string, status: string, note: string): Promise<{ error?: string }> {
   const current = await getSessionAndProfile();
-  if (!current || !canSeeEquipment(current.profile)) throw new Error("Only mechanics and admins can update equipment tickets.");
-  if (!STATUSES.includes(status)) throw new Error("Unknown status.");
+  if (!current || !canSeeEquipment(current.profile)) return { error: "Only mechanics and admins can update equipment tickets." };
+  if (!STATUSES.includes(status)) return { error: "Unknown status." };
 
   const existing = await db.query.equipmentTickets.findFirst({ where: eq(equipmentTickets.id, id) });
-  if (!existing) throw new Error("Ticket not found.");
+  if (!existing) return { error: "Ticket not found." };
 
   const cleanNote = note.trim();
   if (status === "resolved" && !cleanNote && !existing.resolution) {
-    throw new Error("Describe what was done to fix it before marking this resolved.");
+    return { error: "Describe what was done to fix it before marking this resolved." };
   }
-  if (!cleanNote && status === existing.status) throw new Error("Add a note or change the status.");
+  if (!cleanNote && status === existing.status) return { error: "Add a note or change the status." };
 
   const author = current.profile.name;
   await db.insert(equipmentTicketUpdates).values({ id: randomUUID(), ticketId: id, author, status, note: cleanNote || null });
@@ -41,4 +41,5 @@ export async function updateEquipmentTicket(id: string, status: string, note: st
 
   revalidatePath("/equipment");
   revalidatePath("/equipment/history");
+  return {};
 }
