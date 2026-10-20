@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { projects, milestones, dailyLogs, lineItems, expenses, invoices, payApps, sovItems, sovEntries, billingRates, billingTasks, tmInvoices, jsaForms, leakNumbers } from "@/lib/db/schema";
+import { projects, milestones, dailyLogs, lineItems, expenses, invoices, payApps, sovItems, sovEntries, billingRates, billingTasks, tmInvoices, jsaForms, leakNumbers, receipts } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
 import MilestoneSection from "./milestone-section";
 import LogSection from "./log-section";
@@ -10,6 +10,7 @@ import BudgetSection from "./budget-section";
 import BillingSection from "./billing-section";
 import JsaSection from "./jsa-section";
 import EquipmentSection from "./equipment-section";
+import ReceiptSection from "./receipt-section";
 import { getPeople } from "@/lib/people";
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -38,6 +39,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     payApps: typeof payApps.$inferSelect[];
     sovItems: typeof sovItems.$inferSelect[];
     sovEntries: typeof sovEntries.$inferSelect[];
+    receipts: typeof receipts.$inferSelect[];
   } | null = null;
   let billingData: {
     billingRates: typeof billingRates.$inferSelect[];
@@ -45,12 +47,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     tmInvoices: typeof tmInvoices.$inferSelect[];
   } | null = null;
   if (isAdmin) {
-    const [projectExpenses, projectInvoices, projectPayApps, projectSovItems, projectSovEntries] = await Promise.all([
+    const [projectExpenses, projectInvoices, projectPayApps, projectSovItems, projectSovEntries, projectReceipts] = await Promise.all([
       db.select().from(expenses).where(eq(expenses.projectId, id)),
       db.select().from(invoices).where(eq(invoices.projectId, id)),
       db.select().from(payApps).where(eq(payApps.projectId, id)),
       db.select().from(sovItems).where(eq(sovItems.projectId, id)),
       db.select().from(sovEntries).where(eq(sovEntries.projectId, id)),
+      db.select().from(receipts).where(eq(receipts.projectId, id)),
     ]);
     budgetData = {
       expenses: projectExpenses,
@@ -58,6 +61,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       payApps: projectPayApps,
       sovItems: projectSovItems,
       sovEntries: projectSovEntries,
+      receipts: projectReceipts,
     };
 
     if (isTm) {
@@ -128,6 +132,17 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             payApps={budgetData.payApps}
             sovItems={budgetData.sovItems}
             sovEntries={budgetData.sovEntries}
+            receipts={budgetData.receipts.map((r) => ({
+              id: r.id,
+              date: r.date,
+              vendor: r.vendor,
+              amount: r.amount,
+              category: r.category,
+              lineItem: r.lineItem,
+              note: r.note,
+              aiAmount: r.aiAmount,
+              submittedBy: r.submittedBy,
+            }))}
           />
         ) : (
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
@@ -154,6 +169,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
       <div style={{ marginBottom: 20 }}>
         <JsaSection projectId={id} jsas={projectJsas} people={people.names} usualCrews={people.usualCrews} />
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <ReceiptSection projectId={id} billingType={project.billingType} lineItems={projectLineItems.map((li) => ({ itemNo: li.itemNo, description: li.description }))} />
       </div>
 
       <div style={{ marginBottom: 20 }}>

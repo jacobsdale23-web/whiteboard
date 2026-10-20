@@ -231,6 +231,29 @@ export const expenses = pgTable("expenses", {
   amount: numeric("amount").notNull().default("0"),
 });
 
+// Receipts a foreman photographs from a phone/iPad. The vendor, total and date
+// are pre-read by AI and confirmed by the foreman. T&M jobs file them under
+// Fuel / Food / Materials / Equipment (`category`); lump-sum/unit-price jobs
+// file them against a line item (`lineItem` = itemNo). Counts toward the
+// project's total cost. aiVendor/aiAmount keep what the AI read, so an admin
+// can see when the foreman changed it.
+export const receipts = pgTable("receipts", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull(),
+  date: text("date"),
+  vendor: text("vendor"),
+  amount: numeric("amount").notNull().default("0"),
+  category: text("category"),
+  lineItem: text("line_item"),
+  note: text("note"),
+  storageKey: text("storage_key").notNull(),
+  aiVendor: text("ai_vendor"),
+  aiAmount: numeric("ai_amount"),
+  submittedBy: text("submitted_by").notNull(),
+  submittedById: text("submitted_by_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const invoices = pgTable("invoices", {
   id: text("id").primaryKey(),
   projectId: text("project_id").notNull(),

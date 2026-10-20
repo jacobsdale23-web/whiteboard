@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { addExpense, addInvoice, deleteExpense, deleteInvoice } from "./budget-actions";
 import { deletePayApp } from "./payapp-actions";
+import { getReceiptUrl, deleteReceipt } from "./receipt-actions";
 import PayAppModal from "./payapp-modal";
 import { sortedPayApps, rollupAt, itemStatsAt, type SovItemRow, type SovEntryRow, type PayAppRow } from "@/lib/sov";
 
@@ -11,6 +12,17 @@ const CATEGORIES = ["Materials", "Subcontractor", "Equipment", "Other"];
 type Expense = { id: string; date: string | null; description: string | null; amount: string };
 type Invoice = { id: string; invoiceNumber: string | null; vendor: string | null; date: string | null; amount: string; category: string };
 type PayApp = PayAppRow & { id: string; period: string | null; applicationDate: string | null };
+type Receipt = {
+  id: string;
+  date: string | null;
+  vendor: string | null;
+  amount: string;
+  category: string | null;
+  lineItem: string | null;
+  note: string | null;
+  aiAmount: string | null;
+  submittedBy: string;
+};
 
 export default function BudgetSection({
   projectId,
@@ -20,6 +32,7 @@ export default function BudgetSection({
   payApps,
   sovItems,
   sovEntries,
+  receipts,
 }: {
   projectId: string;
   contractValue: string | null;
@@ -28,6 +41,7 @@ export default function BudgetSection({
   payApps: PayApp[];
   sovItems: SovItemRow[];
   sovEntries: SovEntryRow[];
+  receipts: Receipt[];
 }) {
   const [showPayAppModal, setShowPayAppModal] = useState(false);
   const [, startTransition] = useTransition();
@@ -36,7 +50,7 @@ export default function BudgetSection({
   const latestIndex = ordered.length - 1;
   const rollup = latestIndex >= 0 ? rollupAt(sovItems, sovEntries, ordered, latestIndex) : null;
 
-  const totalCost = [...expenses, ...invoices].reduce((sum, x) => sum + Number(x.amount || 0), 0);
+  const totalCost = [...expenses, ...invoices, ...receipts].reduce((sum, x) => sum + Number(x.amount || 0), 0);
   const billedToDate = rollup ? rollup.totalCompleted : 0;
   const margin = billedToDate - totalCost;
   const fallbackValue = contractValue !== null ? Number(contractValue) : null;
@@ -152,6 +166,17 @@ export default function BudgetSection({
         )}
       </SubSection>
 
+      <SubSection title="Field Receipts (scanned by the crew)">
+        {receipts.length ? (
+          receipts
+            .slice()
+            .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+            .map((r) => <ReceiptRow key={r.id} projectId={projectId} receipt={r} />)
+        ) : (
+          <Empty>No receipts submitted yet.</Empty>
+        )}
+      </SubSection>
+
       {showPayAppModal && (
         <PayAppModal projectId={projectId} existingItems={sovItems} onClose={() => setShowPayAppModal(false)} />
       )}
@@ -203,6 +228,51 @@ function ExpenseForm({ projectId }: { projectId: string }) {
         Cancel
       </button>
     </form>
+  );
+}
+
+function ReceiptRow({ projectId, receipt }: { projectId: string; receipt: Receipt }) {
+  const [, startTransition] = useTransition();
+  const [error, setError] = useState("");
+  const edited = receipt.aiAmount !== null && Number(receipt.aiAmount) !== Number(receipt.amount);
+  const where = receipt.category ? receipt.category : receipt.lineItem ? `Item ${receipt.lineItem}` : "General";
+
+  async function view() {
+    setError("");
+    const res = await getReceiptUrl(receipt.id);
+    if (res.url) window.open(res.url, "_blank");
+    else setError(res.error || "Couldn't open the receipt.");
+  }
+
+  return (
+    <div style={rowStyle}>
+      <div>
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.72rem", color: "var(--muted)" }}>{receipt.date || "No date"}</div>
+        <div style={{ fontSize: "0.87rem" }}>
+          {receipt.vendor || "Unknown vendor"} · {where}
+        </div>
+        <div style={{ fontSize: "0.72rem", color: "var(--muted)" }}>
+          Submitted by {receipt.submittedBy}
+          {receipt.note ? ` · ${receipt.note}` : ""}
+          {edited ? ` · foreman changed the total (scan read $${Number(receipt.aiAmount).toLocaleString()})` : ""}
+        </div>
+        {error && <div style={{ color: "var(--danger)", fontSize: "0.76rem" }}>{error}</div>}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>${Number(receipt.amount).toLocaleString()}</span>
+        <button onClick={view} style={addBtnStyle}>
+          View
+        </button>
+        <button
+          onClick={() => {
+            if (confirm("Delete this receipt and its photo?")) startTransition(() => void deleteReceipt(projectId, receipt.id));
+          }}
+          style={deleteBtnStyle}
+        >
+          🗑
+        </button>
+      </div>
+    </div>
   );
 }
 
