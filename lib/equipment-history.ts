@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { equipmentTickets, projects } from "@/lib/db/schema";
+import { equipmentTickets, equipmentTicketCosts, projects } from "@/lib/db/schema";
 
 export type HistoryRow = {
   id: string;
@@ -16,10 +16,13 @@ export type HistoryRow = {
   resolvedBy: string | null;
   resolution: string | null;
   hoursDown: number | null; // from the moment it was reported until it was resolved
+  partsCost: number; // sum of the parts invoices attached to the ticket
 };
 
 export async function loadEquipmentHistory(): Promise<HistoryRow[]> {
-  const [tickets, allProjects] = await Promise.all([db.select().from(equipmentTickets), db.select().from(projects)]);
+  const [tickets, allProjects, costs] = await Promise.all([db.select().from(equipmentTickets), db.select().from(projects), db.select().from(equipmentTicketCosts)]);
+  const costByTicket = new Map<string, number>();
+  for (const c of costs) costByTicket.set(c.ticketId, (costByTicket.get(c.ticketId) || 0) + Number(c.amount));
   const label = new Map(allProjects.map((p) => [p.id, p.projectNumber ? `${p.projectNumber} ${p.name}` : p.name]));
   return tickets
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
@@ -38,6 +41,7 @@ export async function loadEquipmentHistory(): Promise<HistoryRow[]> {
       resolvedBy: t.resolvedBy,
       resolution: t.resolution,
       hoursDown: t.resolvedAt ? Math.max(0, (t.resolvedAt.getTime() - t.createdAt.getTime()) / 3600000) : null,
+      partsCost: costByTicket.get(t.id) || 0,
     }));
 }
 

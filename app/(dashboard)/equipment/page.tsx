@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { equipmentTickets, equipmentTicketUpdates, projects } from "@/lib/db/schema";
+import { equipmentTickets, equipmentTicketUpdates, equipmentTicketCosts, projects } from "@/lib/db/schema";
 import { getSessionAndProfile, canSeeEquipment } from "@/lib/auth/current-user";
 import TicketControls from "./ticket-controls";
+import TicketEditor from "./ticket-editor";
+import TicketParts, { type PartCost } from "./ticket-parts";
 
 type Ticket = typeof equipmentTickets.$inferSelect;
 type Update = typeof equipmentTicketUpdates.$inferSelect;
@@ -30,11 +32,28 @@ export default async function EquipmentPage() {
     );
   }
 
-  const [tickets, allProjects, allUpdates] = await Promise.all([
+  const [tickets, allProjects, allUpdates, allCosts] = await Promise.all([
     db.select().from(equipmentTickets),
     db.select().from(projects),
     db.select().from(equipmentTicketUpdates),
+    db.select().from(equipmentTicketCosts),
   ]);
+  const costsByTicket = new Map<string, PartCost[]>();
+  for (const c of allCosts.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())) {
+    costsByTicket.set(c.ticketId, [
+      ...(costsByTicket.get(c.ticketId) || []),
+      {
+        id: c.id,
+        vendor: c.vendor,
+        description: c.description,
+        amount: Number(c.amount),
+        filename: c.filename,
+        uploadedBy: c.uploadedBy,
+        uploadedById: c.uploadedById,
+        createdAt: c.createdAt.toISOString(),
+      },
+    ]);
+  }
   const projectById = new Map(allProjects.map((p) => [p.id, p]));
   const updatesByTicket = new Map<string, Update[]>();
   for (const u of allUpdates) updatesByTicket.set(u.ticketId, [...(updatesByTicket.get(u.ticketId) || []), u]);
@@ -68,7 +87,7 @@ export default async function EquipmentPage() {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
         {active.map((t) => (
-          <TicketCard key={t.id} t={t} project={projectById.get(t.projectId)} updates={updatesByTicket.get(t.id) || []} />
+          <TicketCard key={t.id} t={t} project={projectById.get(t.projectId)} updates={updatesByTicket.get(t.id) || []} costs={costsByTicket.get(t.id) || []} currentUserId={current.profile.id} isAdmin={isAdmin} />
         ))}
       </div>
 
@@ -79,7 +98,7 @@ export default async function EquipmentPage() {
           </summary>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14, marginTop: 14 }}>
             {resolved.map((t) => (
-              <TicketCard key={t.id} t={t} project={projectById.get(t.projectId)} updates={updatesByTicket.get(t.id) || []} />
+              <TicketCard key={t.id} t={t} project={projectById.get(t.projectId)} updates={updatesByTicket.get(t.id) || []} costs={costsByTicket.get(t.id) || []} currentUserId={current.profile.id} isAdmin={isAdmin} />
             ))}
           </div>
         </details>
@@ -92,7 +111,7 @@ function when(d: Date): string {
   return d.toLocaleString("en-US", { timeZone: "America/Chicago", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-function TicketCard({ t, project, updates }: { t: Ticket; project: typeof projects.$inferSelect | undefined; updates: Update[] }) {
+function TicketCard({ t, project, updates, costs, currentUserId, isAdmin }: { t: Ticket; project: typeof projects.$inferSelect | undefined; updates: Update[]; costs: PartCost[]; currentUserId: string; isAdmin: boolean }) {
   const c = URGENCY_COLOR[t.urgency] || URGENCY_COLOR.minor;
   return (
     <div
@@ -159,6 +178,8 @@ function TicketCard({ t, project, updates }: { t: Ticket; project: typeof projec
         </div>
       )}
       <TicketControls id={t.id} status={t.status} />
+      <TicketParts ticketId={t.id} costs={costs} currentUserId={currentUserId} isAdmin={isAdmin} />
+      <TicketEditor id={t.id} equipment={t.equipment} urgency={t.urgency} problem={t.problem} suspectedCause={t.suspectedCause} isAdmin={isAdmin} />
     </div>
   );
 }

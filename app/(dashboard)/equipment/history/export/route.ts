@@ -19,7 +19,7 @@ export async function GET(req: Request) {
       (!q || [r.equipment, r.project, r.reportedBy, r.resolvedBy || "", r.problem, r.resolution || ""].some((s) => s.toLowerCase().includes(q)))
   );
 
-  const header = ["Reported", "Reported by", "Equipment", "Project", "Severity", "Problem", "Possible cause", "Status", "Fixed (Central)", "Fixed by", "Downtime", "What was done"];
+  const header = ["Reported", "Reported by", "Equipment", "Project", "Severity", "Problem", "Possible cause", "Status", "Fixed (Central)", "Fixed by", "Downtime", "What was done", "Parts cost"];
   const lines = [header.map(csv).join(",")];
   for (const r of rows) {
     lines.push(
@@ -36,12 +36,13 @@ export async function GET(req: Request) {
         r.resolvedBy,
         formatDowntime(r.hoursDown),
         r.resolution,
+        r.partsCost ? r.partsCost.toFixed(2) : "",
       ]
         .map(csv)
         .join(",")
     );
   }
-  return new Response("﻿" + lines.join("\r\n"), {
+  return new Response("\uFEFF" + lines.join("\r\n"), {
     headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="equipment-repair-log-${new Date().toISOString().slice(0, 10)}.csv"` },
   });
 }

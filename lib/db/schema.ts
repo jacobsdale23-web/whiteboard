@@ -32,6 +32,22 @@ export const equipmentTickets = pgTable("equipment_tickets", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// A parts invoice / receipt (with its dollar amount) attached to a ticket, so
+// the cost of each repair can be tracked. The file itself lives in object storage.
+export const equipmentTicketCosts = pgTable("equipment_ticket_costs", {
+  id: text("id").primaryKey(),
+  ticketId: text("ticket_id").notNull(),
+  vendor: text("vendor"),
+  description: text("description"),
+  amount: numeric("amount").notNull().default("0"),
+  storageKey: text("storage_key"),
+  filename: text("filename"),
+  contentType: text("content_type"),
+  uploadedBy: text("uploaded_by").notNull(),
+  uploadedById: text("uploaded_by_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Every status change / mechanic note on a ticket, so admins can see who did
 // what and when instead of just the latest note.
 export const equipmentTicketUpdates = pgTable("equipment_ticket_updates", {
