@@ -13,14 +13,9 @@ export type People = { names: string[]; usualCrews: Record<string, string[]> };
 export async function getPeople(): Promise<People> {
   const [people, pairs] = await Promise.all([db.select().from(crew), db.select().from(foremanCrews)]);
 
-  const all = people.filter((p) => p.active).map((p) => clean(p.name));
-  // Hide a first-name-only entry ("Ben") when exactly one full name starts with it ("Ben Moore").
-  const names = all
-    .filter((n) => {
-      if (n.includes(" ")) return true;
-      const full = all.filter((m) => m.includes(" ") && m.toLowerCase().startsWith(n.toLowerCase() + " "));
-      return full.length !== 1;
-    })
+  const names = people
+    .filter((p) => p.active)
+    .map((p) => clean(p.name))
     .sort((a, b) => a.localeCompare(b));
 
   const since = new Date();

@@ -173,7 +173,7 @@ export default function LogSection({
           {usual.length > 0 && (
             <div style={{ marginBottom: 8 }}>
               <button type="button" onClick={addUsualCrew} style={addBtnStyle}>
-                + Add {foreman.trim()}&apos;s usual crew ({usual.length})
+                + Add usual crew ({usual.length})
               </button>
               <span style={{ fontSize: "0.74rem", color: "var(--muted)", marginLeft: 8 }}>You can change anyone.</span>
             </div>
