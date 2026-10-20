@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { addLog, deleteLog } from "./actions";
+import { improveDescription } from "./ai-actions";
 
 const POSITIONS = ["Foreman", "Operator", "Laborer", "Welder", "Fuser", "Flagger", "Locusview Tech"];
 
@@ -75,6 +76,11 @@ export default function LogSection({
   const [showForm, setShowForm] = useState(false);
   const [foreman, setForeman] = useState("");
   const [crewRows, setCrewRows] = useState<CrewRow[]>([{ key: 0, name: "" }]);
+  const [description, setDescription] = useState("");
+  const [suggestion, setSuggestion] = useState("");
+  const [improving, setImproving] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const descRef = useRef<HTMLTextAreaElement>(null);
   const [, startTransition] = useTransition();
   const sorted = logs.slice().sort((a, b) => b.date.localeCompare(a.date));
   const usual = usualCrews[foreman.trim().toLowerCase()] || [];
@@ -83,6 +89,30 @@ export default function LogSection({
     setShowForm(false);
     setForeman("");
     setCrewRows([{ key: 0, name: "" }]);
+    setDescription("");
+    setSuggestion("");
+    setAiError("");
+  }
+
+  async function improve() {
+    setAiError("");
+    setSuggestion("");
+    setImproving(true);
+    try {
+      const res = await improveDescription(projectId, description);
+      if (res.error) setAiError(res.error);
+      else if (res.improved) setSuggestion(res.improved);
+    } catch {
+      setAiError("The AI helper isn't available right now. You can still submit your description as written.");
+    } finally {
+      setImproving(false);
+    }
+  }
+
+  function useSuggestion() {
+    setDescription(suggestion);
+    setSuggestion("");
+    descRef.current?.setCustomValidity("");
   }
 
   // Suggests this foreman's usual crew; anyone can still be removed, renamed or added.
@@ -218,12 +248,42 @@ export default function LogSection({
 
           <Field label="Description of Work">
             <textarea
+              ref={descRef}
               name="description"
               rows={4}
               required
-              onInput={(e) => e.currentTarget.setCustomValidity(e.currentTarget.value.trim() ? "" : "Please fill out this field.")}
+              value={description}
+              onChange={(e) => {
+                setDescription(e.target.value);
+                e.currentTarget.setCustomValidity(e.currentTarget.value.trim() ? "" : "Please fill out this field.");
+              }}
               style={{ ...inputStyle, resize: "vertical" }}
             />
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+              <button type="button" onClick={improve} disabled={improving} style={addBtnStyle}>
+                {improving ? "Improving…" : "✨ Improve with AI"}
+              </button>
+              <span style={{ fontSize: "0.74rem", color: "var(--muted)" }}>
+                Fixes spelling and grammar and makes it sound professional. You review it before using it.
+              </span>
+            </div>
+            {aiError && <p style={{ color: "var(--danger)", fontSize: "0.82rem", marginTop: 6 }}>{aiError}</p>}
+            {suggestion && (
+              <div style={{ marginTop: 10, border: "1px solid var(--active)", background: "var(--active-bg)", borderRadius: 8, padding: 12 }}>
+                <div style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", color: "var(--active)", marginBottom: 6 }}>
+                  Suggested version
+                </div>
+                <div style={{ fontSize: "0.88rem", whiteSpace: "pre-wrap", marginBottom: 10 }}>{suggestion}</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" onClick={useSuggestion} style={primaryBtnStyle}>
+                    Use this version
+                  </button>
+                  <button type="button" onClick={() => setSuggestion("")} style={secondaryBtnStyle}>
+                    Keep mine
+                  </button>
+                </div>
+              </div>
+            )}
           </Field>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
