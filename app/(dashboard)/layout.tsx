@@ -55,6 +55,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <Link href="/completed" style={navLinkStyle}>
               Completed
             </Link>
+            <Link href="/oq" style={navLinkStyle}>
+              OQ Practice
+            </Link>
             {showEquipment && (
               <Link href="/equipment" style={navLinkStyle}>
                 Equipment

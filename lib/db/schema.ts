@@ -316,6 +316,41 @@ export const opportunities = pgTable("opportunities", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// ---------- OQ practice tests (open to every signed-in user) ----------
+
+// One practice exam (the old app linked each to a Google Form). Several task
+// codes can share the same exam, hence the separate oq_exam_tasks table.
+export const oqExams = pgTable("oq_exams", {
+  id: text("id").primaryKey(),
+  evalId: text("eval_id"),
+  title: text("title").notNull(),
+  formTitle: text("form_title"),
+  questionCount: numeric("question_count").notNull().default("0"),
+});
+
+export const oqExamTasks = pgTable("oq_exam_tasks", {
+  id: text("id").primaryKey(),
+  examId: text("exam_id").notNull(),
+  taskCode: text("task_code").notNull(), // e.g. "F 01"
+  taskName: text("task_name").notNull(),
+});
+
+// The source quizzes did not expose their answer keys, so correctIndex is only
+// filled where two independent AI passes agreed (keyStatus "ai") or an admin
+// set/confirmed it ("verified"). Otherwise it is null ("unconfirmed") and the
+// question is not scored; aiGuessIndex is just a hint for the admin reviewing it.
+export const oqQuestions = pgTable("oq_questions", {
+  id: text("id").primaryKey(),
+  examId: text("exam_id").notNull(),
+  position: numeric("position").notNull().default("0"),
+  text: text("text").notNull(),
+  options: jsonb("options").$type<string[]>().notNull().default([]),
+  correctIndex: numeric("correct_index"),
+  aiGuessIndex: numeric("ai_guess_index"),
+  explanation: text("explanation"),
+  keyStatus: text("key_status").notNull().default("unconfirmed"), // ai | verified | unconfirmed
+});
+
 // ---------- estimating (admin-only, same sensitivity as Budget) ----------
 
 // One line item on a bid. Category replaces generic CSI codes with the
