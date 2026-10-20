@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { addJsa, deleteJsa, acknowledgeJsa } from "./jsa-actions";
+import { improveDescription } from "./ai-actions";
 import { TASK_TYPES, PPE_ITEMS, HAZARD_LIBRARY } from "@/lib/jsa-library";
 
 type JsaHazard = { taskType: string; hazard: string; control: string };
@@ -36,6 +37,11 @@ export default function JsaSection({
   const [selectedTaskTypes, setSelectedTaskTypes] = useState<string[]>([]);
   const [foreman, setForeman] = useState("");
   const [crewRows, setCrewRows] = useState<CrewRow[]>([{ key: 0, name: "" }]);
+  const [hazards, setHazards] = useState("");
+  const [suggestion, setSuggestion] = useState("");
+  const [improving, setImproving] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const hazardsRef = useRef<HTMLTextAreaElement>(null);
   const sorted = jsas.slice().sort((a, b) => b.date.localeCompare(a.date));
   const usual = usualCrews[foreman.trim().toLowerCase()] || [];
 
@@ -44,6 +50,30 @@ export default function JsaSection({
     setSelectedTaskTypes([]);
     setForeman("");
     setCrewRows([{ key: 0, name: "" }]);
+    setHazards("");
+    setSuggestion("");
+    setAiError("");
+  }
+
+  async function improve() {
+    setAiError("");
+    setSuggestion("");
+    setImproving(true);
+    try {
+      const res = await improveDescription(projectId, hazards, "hazards");
+      if (res.error) setAiError(res.error);
+      else if (res.improved) setSuggestion(res.improved);
+    } catch {
+      setAiError("The AI helper isn't available right now. You can still submit your notes as written.");
+    } finally {
+      setImproving(false);
+    }
+  }
+
+  function useSuggestion() {
+    setHazards(suggestion);
+    setSuggestion("");
+    hazardsRef.current?.setCustomValidity("");
   }
 
   // Suggests this foreman's usual crew; anyone can still be removed, renamed or added.
@@ -146,13 +176,43 @@ export default function JsaSection({
 
           <Field label="Additional Site-Specific Hazards / Notes">
             <textarea
+              ref={hazardsRef}
               name="additionalHazards"
               rows={3}
               required
               placeholder="Required — write “None” if there are none"
-              onInput={(e) => e.currentTarget.setCustomValidity(e.currentTarget.value.trim() ? "" : "Please fill out this field.")}
+              value={hazards}
+              onChange={(e) => {
+                setHazards(e.target.value);
+                e.currentTarget.setCustomValidity(e.currentTarget.value.trim() ? "" : "Please fill out this field.");
+              }}
               style={{ ...inputStyle, resize: "vertical" }}
             />
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+              <button type="button" onClick={improve} disabled={improving} style={addBtnStyle}>
+                {improving ? "Improving…" : "✨ Improve with AI"}
+              </button>
+              <span style={{ fontSize: "0.74rem", color: "var(--muted)" }}>
+                Fixes spelling and grammar. It won&apos;t add any hazards. You review it before using it.
+              </span>
+            </div>
+            {aiError && <p style={{ color: "var(--danger)", fontSize: "0.82rem", marginTop: 6 }}>{aiError}</p>}
+            {suggestion && (
+              <div style={{ marginTop: 10, border: "1px solid var(--active)", background: "var(--active-bg)", borderRadius: 8, padding: 12 }}>
+                <div style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", color: "var(--active)", marginBottom: 6 }}>
+                  Suggested version
+                </div>
+                <div style={{ fontSize: "0.88rem", whiteSpace: "pre-wrap", marginBottom: 10 }}>{suggestion}</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" onClick={useSuggestion} style={primaryBtnStyle}>
+                    Use this version
+                  </button>
+                  <button type="button" onClick={() => setSuggestion("")} style={secondaryBtnStyle}>
+                    Keep mine
+                  </button>
+                </div>
+              </div>
+            )}
           </Field>
           <Field label="Emergency Info (nearest hospital / address)">
             <input type="text" name="emergencyInfo" style={inputStyle} />
