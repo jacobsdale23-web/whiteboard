@@ -16,6 +16,13 @@ async function requireAdmin() {
   return current;
 }
 
+export async function setMechanic(userId: string, isMechanic: boolean) {
+  await requireAdmin();
+  await db.update(profiles).set({ isMechanic }).where(eq(profiles.id, userId));
+  revalidatePath("/team");
+  revalidatePath("/equipment");
+}
+
 export async function setRole(userId: string, role: "admin" | "member") {
   const current = await requireAdmin();
   if (current.profile.id === userId && role !== "admin") {

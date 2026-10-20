@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { profiles } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
 import RoleToggle from "./role-toggle";
+import MechanicToggle from "./mechanic-toggle";
 
 export default async function TeamPage() {
   const current = await getSessionAndProfile();
@@ -31,7 +32,8 @@ export default async function TeamPage() {
       <h2 style={{ marginBottom: 8 }}>Team</h2>
       <p style={{ color: "var(--muted)", fontSize: "0.85rem", marginBottom: 18 }}>
         Admins can see and manage Budget data (pay applications, expenses, invoices) on every project. Members —
-        field crew — cannot. Only people who have signed in at least once appear here.
+        field crew — cannot. Mechanics can see the Equipment tickets page (admins always can). Only people who have
+        signed in at least once appear here.
       </p>
       <div style={cardStyle}>
         {sorted.map((p) => (
@@ -42,7 +44,10 @@ export default async function TeamPage() {
               </div>
               <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>{p.email}</div>
             </div>
-            <RoleToggle userId={p.id} role={p.role} isSelf={p.id === current.profile.id} />
+            <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <MechanicToggle userId={p.id} isMechanic={p.isMechanic} />
+              <RoleToggle userId={p.id} role={p.role} isSelf={p.id === current.profile.id} />
+            </div>
           </div>
         ))}
         {!sorted.length && <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>No one has signed in yet.</p>}

@@ -9,6 +9,7 @@ import LogSection from "./log-section";
 import BudgetSection from "./budget-section";
 import BillingSection from "./billing-section";
 import JsaSection from "./jsa-section";
+import EquipmentSection from "./equipment-section";
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -151,6 +152,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
       <div style={{ marginBottom: 20 }}>
         <JsaSection projectId={id} jsas={projectJsas} />
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <EquipmentSection projectId={id} />
       </div>
 
       <LogSection

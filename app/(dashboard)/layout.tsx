@@ -1,5 +1,8 @@
 import Link from "next/link";
-import { getSessionAndProfile } from "@/lib/auth/current-user";
+import { ne } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { equipmentTickets } from "@/lib/db/schema";
+import { getSessionAndProfile, canSeeEquipment } from "@/lib/auth/current-user";
 import SignOutButton from "./sign-out-button";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +11,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const current = await getSessionAndProfile();
   // Proxy already guarantees a session reaches here; this is a safety net.
   if (!current) return null;
+
+  const showEquipment = canSeeEquipment(current.profile);
+  let openTickets = 0;
+  let downTickets = 0;
+  if (showEquipment) {
+    const rows = await db.select({ urgency: equipmentTickets.urgency }).from(equipmentTickets).where(ne(equipmentTickets.status, "resolved"));
+    openTickets = rows.length;
+    downTickets = rows.filter((r) => r.urgency === "down").length;
+  }
 
   return (
     <div>
@@ -43,6 +55,27 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <Link href="/completed" style={navLinkStyle}>
               Completed
             </Link>
+            {showEquipment && (
+              <Link href="/equipment" style={navLinkStyle}>
+                Equipment
+                {openTickets > 0 && (
+                  <span
+                    style={{
+                      marginLeft: 8,
+                      background: downTickets > 0 ? "var(--danger)" : "var(--rust)",
+                      color: "#fff",
+                      borderRadius: 20,
+                      padding: "1px 8px",
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                    }}
+                    title={downTickets > 0 ? `${downTickets} down, ${openTickets} open` : `${openTickets} open`}
+                  >
+                    {openTickets}
+                  </span>
+                )}
+              </Link>
+            )}
           </nav>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>

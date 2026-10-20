@@ -7,6 +7,26 @@ export const profiles = pgTable("profiles", {
   email: text("email").notNull(),
   name: text("name").notNull(),
   role: text("role").notNull().default("member"), // "admin" | "member"
+  // Mechanics (and admins) can see the Equipment tickets page; set on the Team page.
+  isMechanic: boolean("is_mechanic").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Equipment trouble tickets a foreman files from a project so the mechanics
+// know what is down and what might be wrong. Only admins and mechanics can
+// read these; any signed-in user can file one.
+export const equipmentTickets = pgTable("equipment_tickets", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull(),
+  reportedBy: text("reported_by").notNull(),
+  date: text("date").notNull(),
+  equipment: text("equipment").notNull(),
+  urgency: text("urgency").notNull().default("repair_soon"), // down | repair_soon | minor
+  problem: text("problem").notNull(),
+  suspectedCause: text("suspected_cause"),
+  status: text("status").notNull().default("open"), // open | in_progress | resolved
+  mechanicNotes: text("mechanic_notes"),
+  resolvedAt: timestamp("resolved_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -10,3 +10,8 @@ export const getSessionAndProfile = cache(async () => {
   const profile = await ensureProfile(session.user);
   return { user: session.user, profile };
 });
+
+// Who may read equipment tickets. Always re-check this on the server.
+export function canSeeEquipment(profile: { role: string; isMechanic: boolean }): boolean {
+  return profile.role === "admin" || profile.isMechanic;
+}
