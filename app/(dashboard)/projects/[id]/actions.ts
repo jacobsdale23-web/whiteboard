@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { milestones, dailyLogs, leakNumbers, billingTasks } from "@/lib/db/schema";
+import { rememberNames, recordCrewUse } from "@/lib/people";
 
 // ---------- schedule (milestones) ----------
 
@@ -55,6 +56,12 @@ export async function addLog(projectId: string, formData: FormData) {
 
   if (!date || !foreman || !description) return;
 
+  // Match typed names to known people (fixes capitalization) and save new hires.
+  const resolved = await rememberNames([foreman, ...crewRows.map((c) => c.name)]);
+  const foremanName = resolved.get(foreman) || foreman;
+  const crewFinal = crewRows.map((c) => ({ ...c, name: resolved.get(c.name) || c.name }));
+  await recordCrewUse(foremanName, crewFinal.map((c) => c.name), date);
+
   if (leakNumber !== "N/A") {
     const known = await db.select().from(leakNumbers).where(and(eq(leakNumbers.projectId, projectId), eq(leakNumbers.leakNumber, leakNumber)));
     if (!known.length) await db.insert(leakNumbers).values({ id: randomUUID(), projectId, leakNumber, address });
@@ -69,9 +76,9 @@ export async function addLog(projectId: string, formData: FormData) {
     projectId,
     date,
     leakNumber,
-    foreman,
+    foreman: foremanName,
     lineItem,
-    crew: crewRows,
+    crew: crewFinal,
     description,
     address,
     taskNumber,

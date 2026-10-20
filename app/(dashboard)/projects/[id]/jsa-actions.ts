@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { jsaForms } from "@/lib/db/schema";
 import { HAZARD_LIBRARY } from "@/lib/jsa-library";
+import { rememberNames, recordCrewUse } from "@/lib/people";
 
 export async function addJsa(projectId: string, formData: FormData) {
   const date = String(formData.get("date") || "");
@@ -28,13 +29,16 @@ export async function addJsa(projectId: string, formData: FormData) {
     .filter((h): h is { taskType: string; hazard: string; control: string } => h !== null);
 
   const crewNames = formData.getAll("crewName").map(String).map((n) => n.trim()).filter(Boolean);
-  const crew = crewNames.map((name) => ({ name, acknowledgedAt: null as string | null }));
+  const resolved = await rememberNames([foreman, ...crewNames]);
+  const foremanName = resolved.get(foreman) || foreman;
+  const crew = crewNames.map((name) => ({ name: resolved.get(name) || name, acknowledgedAt: null as string | null }));
+  await recordCrewUse(foremanName, crew.map((c) => c.name), date);
 
   await db.insert(jsaForms).values({
     id: randomUUID(),
     projectId,
     date,
-    foreman,
+    foreman: foremanName,
     weather,
     taskTypes,
     hazards,

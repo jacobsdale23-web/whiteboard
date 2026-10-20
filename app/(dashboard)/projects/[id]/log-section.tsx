@@ -19,7 +19,7 @@ type LogEntry = {
 };
 type LineItem = { itemNo: string; description: string | null };
 
-type CrewRow = { key: number };
+type CrewRow = { key: number; name: string };
 
 type Choice = { value: string; label: string };
 
@@ -61,21 +61,40 @@ export default function LogSection({
   lineItems,
   leakNumbers,
   taskNumbers,
+  people,
+  usualCrews,
 }: {
   projectId: string;
   logs: LogEntry[];
   lineItems: LineItem[];
   leakNumbers: Choice[];
   taskNumbers: string[];
+  people: string[];
+  usualCrews: Record<string, string[]>;
 }) {
   const [showForm, setShowForm] = useState(false);
-  const [crewRows, setCrewRows] = useState<CrewRow[]>([{ key: 0 }]);
+  const [foreman, setForeman] = useState("");
+  const [crewRows, setCrewRows] = useState<CrewRow[]>([{ key: 0, name: "" }]);
   const [, startTransition] = useTransition();
   const sorted = logs.slice().sort((a, b) => b.date.localeCompare(a.date));
+  const usual = usualCrews[foreman.trim().toLowerCase()] || [];
 
   function resetForm() {
     setShowForm(false);
-    setCrewRows([{ key: 0 }]);
+    setForeman("");
+    setCrewRows([{ key: 0, name: "" }]);
+  }
+
+  // Suggests this foreman's usual crew; anyone can still be removed, renamed or added.
+  function addUsualCrew() {
+    setCrewRows((rows) => {
+      const kept = rows.filter((r) => r.name.trim());
+      const have = new Set(kept.map((r) => r.name.trim().toLowerCase()));
+      let next = Math.max(0, ...rows.map((r) => r.key)) + 1;
+      const added = usual.filter((n) => !have.has(n.toLowerCase())).map((n) => ({ key: next++, name: n }));
+      const all = [...kept, ...added];
+      return all.length ? all : [{ key: next, name: "" }];
+    });
   }
 
   return (
@@ -101,8 +120,23 @@ export default function LogSection({
           <Field label="Leak Number">
             <PickOrAdd name="leakNumber" options={leakNumbers} noneLabel="N/A" noneValue="N/A" newPlaceholder="New leak number" />
           </Field>
+          <datalist id="people-list">
+            {people.map((n) => (
+              <option key={n} value={n} />
+            ))}
+          </datalist>
           <Field label="Foreman">
-            <input type="text" name="foreman" required style={inputStyle} />
+            <input
+              type="text"
+              name="foreman"
+              list="people-list"
+              autoComplete="off"
+              placeholder="Pick a name or type a new one"
+              required
+              value={foreman}
+              onChange={(e) => setForeman(e.target.value)}
+              style={inputStyle}
+            />
           </Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="Task / Project Number">
@@ -136,9 +170,27 @@ export default function LogSection({
           </Field>
 
           <label style={labelStyle}>Crew</label>
-          {crewRows.map((row, i) => (
+          {usual.length > 0 && (
+            <div style={{ marginBottom: 8 }}>
+              <button type="button" onClick={addUsualCrew} style={addBtnStyle}>
+                + Add {foreman.trim()}&apos;s usual crew ({usual.length})
+              </button>
+              <span style={{ fontSize: "0.74rem", color: "var(--muted)", marginLeft: 8 }}>You can change anyone.</span>
+            </div>
+          )}
+          {crewRows.map((row) => (
             <div key={row.key} style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 0.7fr auto", gap: 8, marginBottom: 8 }}>
-              <input type="text" name="crewName" placeholder="Crew member" required style={inputStyle} />
+              <input
+                type="text"
+                name="crewName"
+                list="people-list"
+                autoComplete="off"
+                placeholder="Pick or type a name"
+                required
+                value={row.name}
+                onChange={(e) => setCrewRows((rows) => rows.map((r) => (r.key === row.key ? { ...r, name: e.target.value } : r)))}
+                style={inputStyle}
+              />
               <select name="crewPosition" style={inputStyle} defaultValue="Operator">
                 {POSITIONS.map((p) => (
                   <option key={p} value={p}>
@@ -158,7 +210,7 @@ export default function LogSection({
           ))}
           <button
             type="button"
-            onClick={() => setCrewRows((rows) => [...rows, { key: Math.max(0, ...rows.map((r) => r.key)) + 1 }])}
+            onClick={() => setCrewRows((rows) => [...rows, { key: Math.max(0, ...rows.map((r) => r.key)) + 1, name: "" }])}
             style={{ ...addBtnStyle, marginBottom: 14 }}
           >
             + Add Crew Member

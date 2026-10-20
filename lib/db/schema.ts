@@ -86,6 +86,17 @@ export const crew = pgTable("crew", {
   role: text("role").notNull().default("foreman"), // "foreman" | "worker" — only foremen show up at the Shop
 });
 
+// Who has recently worked under which foreman (counted from submitted daily
+// logs and JSAs). Powers the "Add usual crew" shortcut — it only suggests;
+// foremen can always change the crew, since people move between foremen.
+export const foremanCrews = pgTable("foreman_crews", {
+  id: text("id").primaryKey(),
+  foreman: text("foreman").notNull(),
+  member: text("member").notNull(),
+  times: numeric("times").notNull().default("1"),
+  lastSeen: text("last_seen").notNull(), // YYYY-MM-DD
+});
+
 // ---------- per-project detail page ----------
 
 export const milestones = pgTable("milestones", {

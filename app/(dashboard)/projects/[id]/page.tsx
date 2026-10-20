@@ -10,6 +10,7 @@ import BudgetSection from "./budget-section";
 import BillingSection from "./billing-section";
 import JsaSection from "./jsa-section";
 import EquipmentSection from "./equipment-section";
+import { getPeople } from "@/lib/people";
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -19,6 +20,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   const current = await getSessionAndProfile();
   const isAdmin = current?.profile.role === "admin";
+  const people = await getPeople();
   const isTm = project.billingType === "tm";
 
   const [projectMilestones, projectLogs, projectLineItems, projectJsas, projectLeakNumbers, projectTaskNumbers] = await Promise.all([
@@ -151,7 +153,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       </div>
 
       <div style={{ marginBottom: 20 }}>
-        <JsaSection projectId={id} jsas={projectJsas} />
+        <JsaSection projectId={id} jsas={projectJsas} people={people.names} usualCrews={people.usualCrews} />
       </div>
 
       <div style={{ marginBottom: 20 }}>
@@ -166,6 +168,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           .map((l) => ({ value: l.leakNumber, label: l.address ? `${l.leakNumber} — ${l.address}` : l.leakNumber }))
           .sort((a, b) => b.value.localeCompare(a.value, undefined, { numeric: true }))}
         taskNumbers={projectTaskNumbers.map((t) => t.taskNumber).sort()}
+        people={people.names}
+        usualCrews={people.usualCrews}
       />
     </div>
   );

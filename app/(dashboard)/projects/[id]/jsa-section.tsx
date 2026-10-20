@@ -19,18 +19,43 @@ type Jsa = {
   crew: JsaCrewMember[] | null;
 };
 
-type CrewRow = { key: number };
+type CrewRow = { key: number; name: string };
 
-export default function JsaSection({ projectId, jsas }: { projectId: string; jsas: Jsa[] }) {
+export default function JsaSection({
+  projectId,
+  jsas,
+  people,
+  usualCrews,
+}: {
+  projectId: string;
+  jsas: Jsa[];
+  people: string[];
+  usualCrews: Record<string, string[]>;
+}) {
   const [showForm, setShowForm] = useState(false);
   const [selectedTaskTypes, setSelectedTaskTypes] = useState<string[]>([]);
-  const [crewRows, setCrewRows] = useState<CrewRow[]>([{ key: 0 }]);
+  const [foreman, setForeman] = useState("");
+  const [crewRows, setCrewRows] = useState<CrewRow[]>([{ key: 0, name: "" }]);
   const sorted = jsas.slice().sort((a, b) => b.date.localeCompare(a.date));
+  const usual = usualCrews[foreman.trim().toLowerCase()] || [];
 
   function resetForm() {
     setShowForm(false);
     setSelectedTaskTypes([]);
-    setCrewRows([{ key: 0 }]);
+    setForeman("");
+    setCrewRows([{ key: 0, name: "" }]);
+  }
+
+  // Suggests this foreman's usual crew; anyone can still be removed, renamed or added.
+  function addUsualCrew() {
+    setCrewRows((rows) => {
+      const kept = rows.filter((r) => r.name.trim());
+      const have = new Set(kept.map((r) => r.name.trim().toLowerCase()));
+      let next = Math.max(0, ...rows.map((r) => r.key)) + 1;
+      const added = usual.filter((n) => !have.has(n.toLowerCase())).map((n) => ({ key: next++, name: n }));
+      const all = [...kept, ...added];
+      return all.length ? all : [{ key: next, name: "" }];
+    });
   }
 
   function toggleTaskType(t: string) {
@@ -62,7 +87,22 @@ export default function JsaSection({ projectId, jsas }: { projectId: string; jsa
               <input type="date" name="date" required style={inputStyle} defaultValue={new Date().toISOString().slice(0, 10)} />
             </Field>
             <Field label="Foreman">
-              <input type="text" name="foreman" required style={inputStyle} />
+              <input
+                type="text"
+                name="foreman"
+                list="jsa-people-list"
+                autoComplete="off"
+                placeholder="Pick a name or type a new one"
+                required
+                value={foreman}
+                onChange={(e) => setForeman(e.target.value)}
+                style={inputStyle}
+              />
+              <datalist id="jsa-people-list">
+                {people.map((n) => (
+                  <option key={n} value={n} />
+                ))}
+              </datalist>
             </Field>
           </div>
           <Field label="Weather Conditions">
@@ -119,9 +159,27 @@ export default function JsaSection({ projectId, jsas }: { projectId: string; jsa
           </Field>
 
           <label style={labelStyle}>Crew Present (each will initial on-site)</label>
-          {crewRows.map((row, i) => (
+          {usual.length > 0 && (
+            <div style={{ marginBottom: 8 }}>
+              <button type="button" onClick={addUsualCrew} style={addBtnStyle}>
+                + Add {foreman.trim()}&apos;s usual crew ({usual.length})
+              </button>
+              <span style={{ fontSize: "0.74rem", color: "var(--muted)", marginLeft: 8 }}>You can change anyone.</span>
+            </div>
+          )}
+          {crewRows.map((row) => (
             <div key={row.key} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 8 }}>
-              <input type="text" name="crewName" placeholder="Crew member name" required style={inputStyle} />
+              <input
+                type="text"
+                name="crewName"
+                list="jsa-people-list"
+                autoComplete="off"
+                placeholder="Pick or type a name"
+                required
+                value={row.name}
+                onChange={(e) => setCrewRows((rows) => rows.map((r) => (r.key === row.key ? { ...r, name: e.target.value } : r)))}
+                style={inputStyle}
+              />
               <button
                 type="button"
                 onClick={() => setCrewRows((rows) => (rows.length > 1 ? rows.filter((r) => r.key !== row.key) : rows))}
@@ -133,7 +191,7 @@ export default function JsaSection({ projectId, jsas }: { projectId: string; jsa
           ))}
           <button
             type="button"
-            onClick={() => setCrewRows((rows) => [...rows, { key: Math.max(0, ...rows.map((r) => r.key)) + 1 }])}
+            onClick={() => setCrewRows((rows) => [...rows, { key: Math.max(0, ...rows.map((r) => r.key)) + 1, name: "" }])}
             style={{ ...addBtnStyle, marginBottom: 14 }}
           >
             + Add Crew Member
