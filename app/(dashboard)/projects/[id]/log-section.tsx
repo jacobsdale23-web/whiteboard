@@ -4,7 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { addLog, deleteLog } from "./actions";
 import { improveDescription } from "./ai-actions";
 
-const POSITIONS = ["Foreman", "Operator", "Laborer", "Welder", "Fuser", "Flagger", "Locusview Tech"];
+const POSITIONS = ["Foreman", "Operator", "Laborer", "Welder", "Fuser", "Flagger", "Drilling Crew Driller", "Drilling Crew Locator", "Locusview Tech"];
 
 type LogEntry = {
   id: string;
