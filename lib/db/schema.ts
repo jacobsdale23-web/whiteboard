@@ -27,6 +27,19 @@ export const equipmentTickets = pgTable("equipment_tickets", {
   status: text("status").notNull().default("open"), // open | in_progress | resolved
   mechanicNotes: text("mechanic_notes"),
   resolvedAt: timestamp("resolved_at"),
+  resolvedBy: text("resolved_by"),
+  resolution: text("resolution"), // what the mechanic did to fix it
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Every status change / mechanic note on a ticket, so admins can see who did
+// what and when instead of just the latest note.
+export const equipmentTicketUpdates = pgTable("equipment_ticket_updates", {
+  id: text("id").primaryKey(),
+  ticketId: text("ticket_id").notNull(),
+  author: text("author").notNull(),
+  status: text("status").notNull(),
+  note: text("note"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

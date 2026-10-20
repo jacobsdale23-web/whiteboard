@@ -4,20 +4,21 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateEquipmentTicket } from "./actions";
 
-export default function TicketControls({ id, status, mechanicNotes }: { id: string; status: string; mechanicNotes: string | null }) {
+export default function TicketControls({ id, status }: { id: string; status: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [newStatus, setNewStatus] = useState(status);
-  const [notes, setNotes] = useState(mechanicNotes || "");
+  const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
 
-  function save(nextStatus: string) {
+  function save() {
     setError("");
     setSaved(false);
     startTransition(async () => {
       try {
-        await updateEquipmentTicket(id, nextStatus, notes);
+        await updateEquipmentTicket(id, newStatus, note);
+        setNote("");
         setSaved(true);
         router.refresh();
       } catch (e) {
@@ -28,15 +29,15 @@ export default function TicketControls({ id, status, mechanicNotes }: { id: stri
 
   return (
     <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
-      <label style={labelStyle}>Mechanic notes</label>
+      <label style={labelStyle}>{newStatus === "resolved" ? "What was done to fix it" : "Add an update"}</label>
       <textarea
-        value={notes}
+        value={note}
         onChange={(e) => {
-          setNotes(e.target.value);
+          setNote(e.target.value);
           setSaved(false);
         }}
         rows={2}
-        placeholder="What you found, parts needed, what was done…"
+        placeholder={newStatus === "resolved" ? "Parts replaced, repair performed, testing…" : "What you found, parts needed, what was done…"}
         style={{ ...inputStyle, resize: "vertical" }}
       />
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
@@ -45,7 +46,7 @@ export default function TicketControls({ id, status, mechanicNotes }: { id: stri
           <option value="in_progress">In progress</option>
           <option value="resolved">Resolved</option>
         </select>
-        <button onClick={() => save(newStatus)} disabled={pending} style={primaryBtnStyle}>
+        <button onClick={save} disabled={pending} style={primaryBtnStyle}>
           {pending ? "Saving…" : "Save"}
         </button>
         {saved && <span style={{ color: "var(--active)", fontSize: "0.8rem", fontWeight: 600 }}>Saved</span>}
