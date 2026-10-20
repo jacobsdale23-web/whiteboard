@@ -121,6 +121,9 @@ export const dailyLogs = pgTable("daily_logs", {
   taskNumber: text("task_number"), // Atmos-style task/PO number (T&M billing) — references billing_tasks.taskNumber
   locusviewNumber: text("locusview_number"), // Locusview work-order number (T&M billing)
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  // Set when someone corrects a log after it was submitted.
+  editedAt: timestamp("edited_at"),
+  editedBy: text("edited_by"),
 });
 
 // Daily Job Safety Analysis — filled out by the foreman before work starts,

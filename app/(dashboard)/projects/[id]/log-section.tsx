@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
-import { addLog, deleteLog } from "./actions";
+import { useId, useRef, useState, useTransition } from "react";
+import { addLog, deleteLog, updateLog } from "./actions";
 import { improveDescription } from "./ai-actions";
 
 const POSITIONS = ["Foreman", "Operator", "Laborer", "Welder", "Fuser", "Flagger", "Drilling Crew Driller", "Drilling Crew Locator", "Locusview Tech"];
@@ -17,12 +17,14 @@ type LogEntry = {
   address: string | null;
   taskNumber: string | null;
   locusviewNumber: string | null;
+  editedAt: Date | null;
+  editedBy: string | null;
 };
 type LineItem = { itemNo: string; description: string | null };
-
-type CrewRow = { key: number; name: string };
-
 type Choice = { value: string; label: string };
+type CrewRow = { key: number; name: string; position: string; hours: string };
+
+const today = () => new Date().toISOString().slice(0, 10);
 
 function PickOrAdd({
   name,
@@ -30,19 +32,23 @@ function PickOrAdd({
   noneLabel,
   noneValue,
   newPlaceholder,
+  initial,
 }: {
   name: string;
   options: Choice[];
   noneLabel: string;
   noneValue: string;
   newPlaceholder: string;
+  initial?: string;
 }) {
-  const [value, setValue] = useState(noneValue);
+  const [value, setValue] = useState(initial ?? noneValue);
+  // Editing an old log: keep its value selectable even if it isn't in the saved list.
+  const all = initial && initial !== noneValue && !options.some((o) => o.value === initial) ? [{ value: initial, label: initial }, ...options] : options;
   return (
     <>
       <select name={name} value={value} onChange={(e) => setValue(e.target.value)} style={inputStyle}>
         <option value={noneValue}>{noneLabel}</option>
-        {options.map((o) => (
+        {all.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
           </option>
@@ -56,43 +62,41 @@ function PickOrAdd({
   );
 }
 
-export default function LogSection({
+function LogForm({
   projectId,
-  logs,
+  initial,
   lineItems,
   leakNumbers,
   taskNumbers,
   people,
   usualCrews,
+  onDone,
 }: {
   projectId: string;
-  logs: LogEntry[];
+  initial?: LogEntry;
   lineItems: LineItem[];
   leakNumbers: Choice[];
   taskNumbers: string[];
   people: string[];
   usualCrews: Record<string, string[]>;
+  onDone: () => void;
 }) {
-  const [showForm, setShowForm] = useState(false);
-  const [foreman, setForeman] = useState("");
-  const [crewRows, setCrewRows] = useState<CrewRow[]>([{ key: 0, name: "" }]);
-  const [description, setDescription] = useState("");
+  const editing = !!initial;
+  const listId = useId();
+  const [foreman, setForeman] = useState(initial?.foreman || "");
+  const [crewRows, setCrewRows] = useState<CrewRow[]>(
+    initial?.crew?.length
+      ? initial.crew.map((c, i) => ({ key: i, name: c.name, position: c.position || "Operator", hours: String(c.hours) }))
+      : [{ key: 0, name: "", position: "Operator", hours: "" }]
+  );
+  const [description, setDescription] = useState(initial?.description || "");
   const [suggestion, setSuggestion] = useState("");
   const [improving, setImproving] = useState(false);
   const [aiError, setAiError] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
   const descRef = useRef<HTMLTextAreaElement>(null);
-  const [, startTransition] = useTransition();
-  const sorted = logs.slice().sort((a, b) => b.date.localeCompare(a.date));
   const usual = usualCrews[foreman.trim().toLowerCase()] || [];
-
-  function resetForm() {
-    setShowForm(false);
-    setForeman("");
-    setCrewRows([{ key: 0, name: "" }]);
-    setDescription("");
-    setSuggestion("");
-    setAiError("");
-  }
 
   async function improve() {
     setAiError("");
@@ -121,11 +125,238 @@ export default function LogSection({
       const kept = rows.filter((r) => r.name.trim());
       const have = new Set(kept.map((r) => r.name.trim().toLowerCase()));
       let next = Math.max(0, ...rows.map((r) => r.key)) + 1;
-      const added = usual.filter((n) => !have.has(n.toLowerCase())).map((n) => ({ key: next++, name: n }));
+      const added = usual.filter((n) => !have.has(n.toLowerCase())).map((n) => ({ key: next++, name: n, position: "Operator", hours: "" }));
       const all = [...kept, ...added];
-      return all.length ? all : [{ key: next, name: "" }];
+      return all.length ? all : [{ key: next, name: "", position: "Operator", hours: "" }];
     });
   }
+
+  async function submit(fd: FormData) {
+    setError("");
+    setSaving(true);
+    try {
+      if (editing) {
+        const res = await updateLog(projectId, initial!.id, fd);
+        if (res.error) return setError(res.error);
+      } else {
+        await addLog(projectId, fd);
+      }
+      onDone();
+    } catch {
+      setError("Couldn't save that. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const patchRow = (key: number, patch: Partial<CrewRow>) => setCrewRows((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+
+  return (
+    <form action={submit} style={{ marginBottom: 18, borderBottom: "1px solid var(--border)", paddingBottom: 16 }}>
+      {editing && (
+        <p style={{ fontSize: "0.82rem", color: "var(--muted)", marginBottom: 12 }}>
+          Fixing a mistake on this log. It will be marked as edited. Weekly T&amp;M invoices that were already generated won&apos;t change.
+        </p>
+      )}
+      <Field label="Date">
+        <input type="date" name="date" required style={inputStyle} defaultValue={initial?.date || today()} />
+      </Field>
+      <Field label="Leak Number">
+        <PickOrAdd name="leakNumber" options={leakNumbers} noneLabel="N/A" noneValue="N/A" newPlaceholder="New leak number" initial={initial?.leakNumber} />
+      </Field>
+      <datalist id={listId}>
+        {people.map((n) => (
+          <option key={n} value={n} />
+        ))}
+      </datalist>
+      <Field label="Foreman">
+        <input
+          type="text"
+          name="foreman"
+          list={listId}
+          autoComplete="off"
+          placeholder="Pick a name or type a new one"
+          required
+          value={foreman}
+          onChange={(e) => setForeman(e.target.value)}
+          style={inputStyle}
+        />
+      </Field>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <Field label="Task / Project Number">
+          <PickOrAdd
+            name="taskNumber"
+            options={taskNumbers.map((t) => ({ value: t, label: t }))}
+            noneLabel="— None —"
+            noneValue=""
+            newPlaceholder="New task number, e.g. 070.58526"
+            initial={initial?.taskNumber || undefined}
+          />
+        </Field>
+        <Field label="Locusview Number">
+          <input type="text" name="locusviewNumber" style={inputStyle} defaultValue={initial?.locusviewNumber || ""} />
+        </Field>
+      </div>
+      <Field label="Address">
+        <input type="text" name="address" placeholder="Job site address" style={inputStyle} defaultValue={initial?.address || ""} />
+      </Field>
+      <Field label="Line Item">
+        <select name="lineItem" style={inputStyle} defaultValue={initial?.lineItem || ""}>
+          <option value="">— No line item —</option>
+          {initial?.lineItem && !lineItems.some((li) => li.itemNo === initial.lineItem) && <option value={initial.lineItem}>{initial.lineItem}</option>}
+          {lineItems
+            .slice()
+            .sort((a, b) => a.itemNo.localeCompare(b.itemNo))
+            .map((li) => (
+              <option key={li.itemNo} value={li.itemNo}>
+                {li.itemNo} — {li.description}
+              </option>
+            ))}
+        </select>
+      </Field>
+
+      <label style={labelStyle}>Crew</label>
+      {usual.length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          <button type="button" onClick={addUsualCrew} style={addBtnStyle}>
+            + Add usual crew ({usual.length})
+          </button>
+          <span style={{ fontSize: "0.74rem", color: "var(--muted)", marginLeft: 8 }}>You can change anyone.</span>
+        </div>
+      )}
+      {crewRows.map((row) => (
+        <div key={row.key} style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 0.7fr auto", gap: 8, marginBottom: 8 }}>
+          <input
+            type="text"
+            name="crewName"
+            list={listId}
+            autoComplete="off"
+            placeholder="Pick or type a name"
+            required
+            value={row.name}
+            onChange={(e) => patchRow(row.key, { name: e.target.value })}
+            style={inputStyle}
+          />
+          <select name="crewPosition" value={row.position} onChange={(e) => patchRow(row.key, { position: e.target.value })} style={inputStyle}>
+            {!POSITIONS.includes(row.position) && <option value={row.position}>{row.position}</option>}
+            {POSITIONS.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+          <input
+            type="number"
+            name="crewHours"
+            placeholder="Hours"
+            min="0"
+            step="0.25"
+            required
+            value={row.hours}
+            onChange={(e) => patchRow(row.key, { hours: e.target.value })}
+            style={inputStyle}
+          />
+          <button
+            type="button"
+            onClick={() => setCrewRows((rows) => (rows.length > 1 ? rows.filter((r) => r.key !== row.key) : rows))}
+            style={{ ...deleteBtnStyle, justifySelf: "center" }}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => setCrewRows((rows) => [...rows, { key: Math.max(0, ...rows.map((r) => r.key)) + 1, name: "", position: "Operator", hours: "" }])}
+        style={{ ...addBtnStyle, marginBottom: 14 }}
+      >
+        + Add Crew Member
+      </button>
+
+      <Field label="Description of Work">
+        <textarea
+          ref={descRef}
+          name="description"
+          rows={4}
+          required
+          value={description}
+          onChange={(e) => {
+            setDescription(e.target.value);
+            e.currentTarget.setCustomValidity(e.currentTarget.value.trim() ? "" : "Please fill out this field.");
+          }}
+          style={{ ...inputStyle, resize: "vertical" }}
+        />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+          <button type="button" onClick={improve} disabled={improving} style={addBtnStyle}>
+            {improving ? "Improving…" : "✨ Improve with AI"}
+          </button>
+          <span style={{ fontSize: "0.74rem", color: "var(--muted)" }}>
+            Fixes spelling and grammar and makes it sound professional. You review it before using it.
+          </span>
+        </div>
+        {aiError && <p style={{ color: "var(--danger)", fontSize: "0.82rem", marginTop: 6 }}>{aiError}</p>}
+        {suggestion && (
+          <div style={{ marginTop: 10, border: "1px solid var(--active)", background: "var(--active-bg)", borderRadius: 8, padding: 12 }}>
+            <div style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", color: "var(--active)", marginBottom: 6 }}>
+              Suggested version
+            </div>
+            <div style={{ fontSize: "0.88rem", whiteSpace: "pre-wrap", marginBottom: 10 }}>{suggestion}</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" onClick={useSuggestion} style={primaryBtnStyle}>
+                Use this version
+              </button>
+              <button type="button" onClick={() => setSuggestion("")} style={secondaryBtnStyle}>
+                Keep mine
+              </button>
+            </div>
+          </div>
+        )}
+      </Field>
+
+      {error && <p style={{ color: "var(--danger)", fontSize: "0.85rem", marginBottom: 10 }}>{error}</p>}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+        <button type="button" onClick={onDone} style={secondaryBtnStyle}>
+          Cancel
+        </button>
+        <button type="submit" disabled={saving} style={primaryBtnStyle}>
+          {saving ? "Saving…" : editing ? "Save Changes" : "Add"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+export default function LogSection({
+  projectId,
+  logs,
+  lineItems,
+  leakNumbers,
+  taskNumbers,
+  people,
+  usualCrews,
+  isAdmin,
+}: {
+  projectId: string;
+  logs: LogEntry[];
+  lineItems: LineItem[];
+  leakNumbers: Choice[];
+  taskNumbers: string[];
+  people: string[];
+  usualCrews: Record<string, string[]>;
+  isAdmin: boolean;
+}) {
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [, startTransition] = useTransition();
+  const sorted = logs.slice().sort((a, b) => b.date.localeCompare(a.date));
+  const formProps = { projectId, lineItems, leakNumbers, taskNumbers, people, usualCrews };
+
+  const pdfUrl = (qs: string) => `/projects/${projectId}/logs-pdf?${qs}`;
+  const allSelected = sorted.length > 0 && selected.length === sorted.length;
+  const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   return (
     <div style={cardStyle}>
@@ -136,173 +367,42 @@ export default function LogSection({
         </button>
       </div>
 
-      {showForm && (
-        <form
-          action={async (fd) => {
-            await addLog(projectId, fd);
-            resetForm();
-          }}
-          style={{ marginBottom: 18, borderBottom: "1px solid var(--border)", paddingBottom: 16 }}
-        >
-          <Field label="Date">
-            <input type="date" name="date" required style={inputStyle} defaultValue={new Date().toISOString().slice(0, 10)} />
-          </Field>
-          <Field label="Leak Number">
-            <PickOrAdd name="leakNumber" options={leakNumbers} noneLabel="N/A" noneValue="N/A" newPlaceholder="New leak number" />
-          </Field>
-          <datalist id="people-list">
-            {people.map((n) => (
-              <option key={n} value={n} />
-            ))}
-          </datalist>
-          <Field label="Foreman">
-            <input
-              type="text"
-              name="foreman"
-              list="people-list"
-              autoComplete="off"
-              placeholder="Pick a name or type a new one"
-              required
-              value={foreman}
-              onChange={(e) => setForeman(e.target.value)}
-              style={inputStyle}
-            />
-          </Field>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Task / Project Number">
-              <PickOrAdd
-                name="taskNumber"
-                options={taskNumbers.map((t) => ({ value: t, label: t }))}
-                noneLabel="— None —"
-                noneValue=""
-                newPlaceholder="New task number, e.g. 070.58526"
-              />
-            </Field>
-            <Field label="Locusview Number">
-              <input type="text" name="locusviewNumber" style={inputStyle} />
-            </Field>
-          </div>
-          <Field label="Address">
-            <input type="text" name="address" placeholder="Job site address" style={inputStyle} />
-          </Field>
-          <Field label="Line Item">
-            <select name="lineItem" style={inputStyle} defaultValue="">
-              <option value="">— No line item —</option>
-              {lineItems
-                .slice()
-                .sort((a, b) => a.itemNo.localeCompare(b.itemNo))
-                .map((li) => (
-                  <option key={li.itemNo} value={li.itemNo}>
-                    {li.itemNo} — {li.description}
-                  </option>
-                ))}
-            </select>
-          </Field>
+      {showForm && <LogForm {...formProps} onDone={() => setShowForm(false)} />}
 
-          <label style={labelStyle}>Crew</label>
-          {usual.length > 0 && (
-            <div style={{ marginBottom: 8 }}>
-              <button type="button" onClick={addUsualCrew} style={addBtnStyle}>
-                + Add usual crew ({usual.length})
-              </button>
-              <span style={{ fontSize: "0.74rem", color: "var(--muted)", marginLeft: 8 }}>You can change anyone.</span>
-            </div>
-          )}
-          {crewRows.map((row) => (
-            <div key={row.key} style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 0.7fr auto", gap: 8, marginBottom: 8 }}>
-              <input
-                type="text"
-                name="crewName"
-                list="people-list"
-                autoComplete="off"
-                placeholder="Pick or type a name"
-                required
-                value={row.name}
-                onChange={(e) => setCrewRows((rows) => rows.map((r) => (r.key === row.key ? { ...r, name: e.target.value } : r)))}
-                style={inputStyle}
-              />
-              <select name="crewPosition" style={inputStyle} defaultValue="Operator">
-                {POSITIONS.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-              <input type="number" name="crewHours" placeholder="Hours" min="0" step="0.25" required style={inputStyle} />
-              <button
-                type="button"
-                onClick={() => setCrewRows((rows) => (rows.length > 1 ? rows.filter((r) => r.key !== row.key) : rows))}
-                style={{ ...deleteBtnStyle, justifySelf: "center" }}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={() => setCrewRows((rows) => [...rows, { key: Math.max(0, ...rows.map((r) => r.key)) + 1, name: "" }])}
-            style={{ ...addBtnStyle, marginBottom: 14 }}
-          >
-            + Add Crew Member
+      {isAdmin && sorted.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", background: "var(--surface-2)", borderRadius: 8, padding: "10px 12px", marginBottom: 10, fontSize: "0.8rem" }}>
+          <strong style={{ textTransform: "uppercase", fontSize: "0.72rem", color: "var(--muted)" }}>Export to PDF</strong>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={allSelected} onChange={() => setSelected(allSelected ? [] : sorted.map((l) => l.id))} />
+            Select all
+          </label>
+          <button disabled={!selected.length} onClick={() => window.open(pdfUrl(`ids=${selected.join(",")}`), "_blank")} style={{ ...addBtnStyle, opacity: selected.length ? 1 : 0.5 }}>
+            Export selected ({selected.length})
           </button>
-
-          <Field label="Description of Work">
-            <textarea
-              ref={descRef}
-              name="description"
-              rows={4}
-              required
-              value={description}
-              onChange={(e) => {
-                setDescription(e.target.value);
-                e.currentTarget.setCustomValidity(e.currentTarget.value.trim() ? "" : "Please fill out this field.");
-              }}
-              style={{ ...inputStyle, resize: "vertical" }}
-            />
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
-              <button type="button" onClick={improve} disabled={improving} style={addBtnStyle}>
-                {improving ? "Improving…" : "✨ Improve with AI"}
-              </button>
-              <span style={{ fontSize: "0.74rem", color: "var(--muted)" }}>
-                Fixes spelling and grammar and makes it sound professional. You review it before using it.
-              </span>
-            </div>
-            {aiError && <p style={{ color: "var(--danger)", fontSize: "0.82rem", marginTop: 6 }}>{aiError}</p>}
-            {suggestion && (
-              <div style={{ marginTop: 10, border: "1px solid var(--active)", background: "var(--active-bg)", borderRadius: 8, padding: 12 }}>
-                <div style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", color: "var(--active)", marginBottom: 6 }}>
-                  Suggested version
-                </div>
-                <div style={{ fontSize: "0.88rem", whiteSpace: "pre-wrap", marginBottom: 10 }}>{suggestion}</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button type="button" onClick={useSuggestion} style={primaryBtnStyle}>
-                    Use this version
-                  </button>
-                  <button type="button" onClick={() => setSuggestion("")} style={secondaryBtnStyle}>
-                    Keep mine
-                  </button>
-                </div>
-              </div>
-            )}
-          </Field>
-
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-            <button type="button" onClick={resetForm} style={secondaryBtnStyle}>
-              Cancel
-            </button>
-            <button type="submit" style={primaryBtnStyle}>
-              Add
-            </button>
-          </div>
-        </form>
+          <span style={{ color: "var(--muted)" }}>or a range:</span>
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ ...inputStyle, width: "auto", padding: "5px 8px" }} />
+          <span>to</span>
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ ...inputStyle, width: "auto", padding: "5px 8px" }} />
+          <button
+            disabled={!from && !to}
+            onClick={() => window.open(pdfUrl(`${from ? `from=${from}&` : ""}${to ? `to=${to}` : ""}`), "_blank")}
+            style={{ ...addBtnStyle, opacity: from || to ? 1 : 0.5 }}
+          >
+            Export range
+          </button>
+        </div>
       )}
 
       {sorted.length ? (
         sorted.map((l) => {
+          if (editingId === l.id) {
+            return <LogForm key={l.id} {...formProps} initial={l} onDone={() => setEditingId(null)} />;
+          }
           const li = l.lineItem ? lineItems.find((x) => x.itemNo === l.lineItem) : null;
           return (
             <div key={l.id} style={rowStyle}>
-              <div>
+              {isAdmin && <input type="checkbox" checked={selected.includes(l.id)} onChange={() => toggle(l.id)} style={{ marginTop: 4 }} aria-label="Select for PDF export" />}
+              <div style={{ flex: 1 }}>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.72rem", color: "var(--muted)" }}>{l.date}</div>
                 <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--ink-soft)" }}>
                   Leak #: {l.leakNumber}
@@ -322,16 +422,31 @@ export default function LogSection({
                   </div>
                 )}
                 <div style={{ fontSize: "0.85rem", marginTop: 6 }}>{l.description}</div>
+                {l.editedAt && (
+                  <div style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: 4 }}>
+                    Edited{l.editedBy ? ` by ${l.editedBy}` : ""} on {new Date(l.editedAt).toLocaleDateString("en-US", { timeZone: "America/Chicago" })}
+                  </div>
+                )}
               </div>
-              <button
-                onClick={() => {
-                  if (confirm("Delete this log entry?")) startTransition(() => deleteLog(projectId, l.id));
-                }}
-                style={deleteBtnStyle}
-                title="Delete"
-              >
-                🗑
-              </button>
+              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                {isAdmin && (
+                  <button onClick={() => window.open(pdfUrl(`ids=${l.id}`), "_blank")} style={{ ...deleteBtnStyle, width: "auto", padding: "0 8px", fontSize: "0.72rem", fontWeight: 600 }} title="Export this log to PDF">
+                    PDF
+                  </button>
+                )}
+                <button onClick={() => setEditingId(l.id)} style={deleteBtnStyle} title="Edit this log">
+                  ✎
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm("Delete this log entry?")) startTransition(() => deleteLog(projectId, l.id));
+                  }}
+                  style={deleteBtnStyle}
+                  title="Delete"
+                >
+                  🗑
+                </button>
+              </div>
             </div>
           );
         })

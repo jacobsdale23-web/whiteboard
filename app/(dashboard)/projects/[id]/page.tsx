@@ -189,6 +189,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         taskNumbers={projectTaskNumbers.map((t) => t.taskNumber).sort()}
         people={people.names}
         usualCrews={people.usualCrews}
+        isAdmin={isAdmin}
       />
     </div>
   );

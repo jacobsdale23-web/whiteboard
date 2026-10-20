@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { milestones, dailyLogs, leakNumbers, billingTasks } from "@/lib/db/schema";
 import { rememberNames, recordCrewUse } from "@/lib/people";
+import { getSessionAndProfile } from "@/lib/auth/current-user";
 
 // ---------- schedule (milestones) ----------
 
@@ -37,7 +38,9 @@ function pickedValue(formData: FormData, name: string): string {
   return v === NEW_OPTION ? String(formData.get(`${name}New`) || "").trim() : v;
 }
 
-export async function addLog(projectId: string, formData: FormData) {
+// Reads and validates the log form (shared by add and edit), tidies typed
+// names to match known people, and saves any new leak / task numbers.
+async function prepareLog(projectId: string, formData: FormData) {
   const date = String(formData.get("date") || "");
   const leakNumber = pickedValue(formData, "leakNumber") || "N/A";
   const foreman = String(formData.get("foreman") || "").trim();
@@ -54,13 +57,12 @@ export async function addLog(projectId: string, formData: FormData) {
     .map((n, i) => ({ name: String(n).trim(), position: String(positions[i] || ""), hours: Number(hours[i]) || 0 }))
     .filter((c) => c.name);
 
-  if (!date || !foreman || !description) return;
+  if (!date || !foreman || !description) return null;
 
   // Match typed names to known people (fixes capitalization) and save new hires.
   const resolved = await rememberNames([foreman, ...crewRows.map((c) => c.name)]);
   const foremanName = resolved.get(foreman) || foreman;
   const crewFinal = crewRows.map((c) => ({ ...c, name: resolved.get(c.name) || c.name }));
-  await recordCrewUse(foremanName, crewFinal.map((c) => c.name), date);
 
   if (leakNumber !== "N/A") {
     const known = await db.select().from(leakNumbers).where(and(eq(leakNumbers.projectId, projectId), eq(leakNumbers.leakNumber, leakNumber)));
@@ -71,20 +73,35 @@ export async function addLog(projectId: string, formData: FormData) {
     if (!known.length) await db.insert(billingTasks).values({ id: randomUUID(), projectId, taskNumber });
   }
 
-  await db.insert(dailyLogs).values({
-    id: randomUUID(),
-    projectId,
-    date,
-    leakNumber,
-    foreman: foremanName,
-    lineItem,
-    crew: crewFinal,
-    description,
-    address,
-    taskNumber,
-    locusviewNumber,
-  });
+  return { date, leakNumber, foreman: foremanName, lineItem, crew: crewFinal, description, address, taskNumber, locusviewNumber };
+}
+
+export async function addLog(projectId: string, formData: FormData) {
+  const values = await prepareLog(projectId, formData);
+  if (!values) return;
+  await recordCrewUse(values.foreman, values.crew.map((c) => c.name), values.date);
+  await db.insert(dailyLogs).values({ id: randomUUID(), projectId, ...values });
   revalidatePath(`/projects/${projectId}`);
+}
+
+// Fix a mistake after submitting. The log is marked as edited (who and when);
+// weekly T&M invoices that were already generated are frozen snapshots and are
+// not changed by this.
+export async function updateLog(projectId: string, logId: string, formData: FormData): Promise<{ error?: string }> {
+  const current = await getSessionAndProfile();
+  if (!current) return { error: "Please sign in again." };
+  const existing = await db.query.dailyLogs.findFirst({ where: and(eq(dailyLogs.id, logId), eq(dailyLogs.projectId, projectId)) });
+  if (!existing) return { error: "That log no longer exists." };
+
+  const values = await prepareLog(projectId, formData);
+  if (!values) return { error: "Date, foreman and a description of the work are required." };
+
+  await db
+    .update(dailyLogs)
+    .set({ ...values, editedAt: new Date(), editedBy: current.profile.name })
+    .where(eq(dailyLogs.id, logId));
+  revalidatePath(`/projects/${projectId}`);
+  return {};
 }
 
 export async function deleteLog(projectId: string, id: string) {
