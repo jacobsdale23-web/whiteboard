@@ -56,6 +56,8 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
             position: e.position,
             phone: e.phone,
             email: e.email,
+            personalEmail: e.personalEmail,
+            address: e.address,
             hireDate: e.hireDate,
             status: e.status,
             terminatedDate: e.terminatedDate,

@@ -49,6 +49,7 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
             name: c.name,
             phone: c.phone,
             email: c.email,
+            address: c.address,
             position: c.position,
             source: c.source,
             stage: c.stage,

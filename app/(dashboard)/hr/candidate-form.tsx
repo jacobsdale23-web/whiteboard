@@ -12,6 +12,7 @@ export type CandidateRow = {
   name: string;
   phone: string | null;
   email: string | null;
+  address: string | null;
   position: string | null;
   source: string | null;
   stage: string;
@@ -40,6 +41,7 @@ export default function CandidateForm({ candidate, companies, defaultCompanyId }
         name: String(fd.get("name") || ""),
         phone: String(fd.get("phone") || ""),
         email: String(fd.get("email") || ""),
+        address: String(fd.get("address") || ""),
         position: String(fd.get("position") || ""),
         source: String(fd.get("source") || ""),
         stage: String(fd.get("stage") || candidate?.stage || "applied"),
@@ -91,6 +93,9 @@ export default function CandidateForm({ candidate, companies, defaultCompanyId }
         </Field>
         <Field text="Email">
           <input name="email" type="email" defaultValue={candidate?.email ?? ""} style={input} />
+        </Field>
+        <Field text="Address">
+          <input name="address" defaultValue={candidate?.address ?? ""} style={input} />
         </Field>
         <Field text="Source">
           <input name="source" defaultValue={candidate?.source ?? ""} placeholder="Referral, Indeed, walk-in…" style={input} />

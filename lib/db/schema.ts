@@ -464,6 +464,8 @@ export const hrEmployees = pgTable("hr_employees", {
   position: text("position"),
   phone: text("phone"),
   email: text("email"),
+  address: text("address"),
+  personalEmail: text("personal_email"),
   hireDate: text("hire_date"),
   status: text("status").notNull().default("active"), // active | leave | terminated
   terminatedDate: text("terminated_date"),
@@ -482,6 +484,7 @@ export const hrCandidates = pgTable("hr_candidates", {
   phone: text("phone"),
   email: text("email"),
   position: text("position"),
+  address: text("address"),
   source: text("source"),
   stage: text("stage").notNull().default("applied"),
   appliedDate: text("applied_date"),

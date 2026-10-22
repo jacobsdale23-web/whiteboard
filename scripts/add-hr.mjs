@@ -66,6 +66,9 @@ const steps = [
      created_at timestamp not null default now()
    )`,
   `create unique index if not exists hr_oq_quals_uniq on hr_oq_quals (employee_id, task_code)`,
+  `alter table hr_employees add column if not exists address text`,
+  `alter table hr_employees add column if not exists personal_email text`,
+  `alter table hr_candidates add column if not exists address text`,
   `create index if not exists hr_drug_tests_candidate on hr_drug_tests (candidate_id)`,
   `create index if not exists hr_drug_tests_employee on hr_drug_tests (employee_id)`,
 ];

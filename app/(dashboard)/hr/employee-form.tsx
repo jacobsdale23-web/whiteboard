@@ -13,6 +13,8 @@ export type EmployeeRow = {
   position: string | null;
   phone: string | null;
   email: string | null;
+  personalEmail: string | null;
+  address: string | null;
   hireDate: string | null;
   status: string;
   terminatedDate: string | null;
@@ -43,6 +45,8 @@ export default function EmployeeForm({ employee, companies, defaultCompanyId }: 
         position: String(fd.get("position") || ""),
         phone: String(fd.get("phone") || ""),
         email: String(fd.get("email") || ""),
+        personalEmail: String(fd.get("personalEmail") || ""),
+        address: String(fd.get("address") || ""),
         hireDate: String(fd.get("hireDate") || ""),
         status: String(fd.get("status") || "active"),
         terminatedDate: String(fd.get("terminatedDate") || ""),
@@ -90,8 +94,14 @@ export default function EmployeeForm({ employee, companies, defaultCompanyId }: 
         <Field text="Phone">
           <input name="phone" type="tel" defaultValue={employee?.phone ?? ""} style={input} />
         </Field>
-        <Field text="Email">
+        <Field text="Company email">
           <input name="email" type="email" defaultValue={employee?.email ?? ""} style={input} />
+        </Field>
+        <Field text="Personal email">
+          <input name="personalEmail" type="email" defaultValue={employee?.personalEmail ?? ""} style={input} />
+        </Field>
+        <Field text="Address">
+          <input name="address" defaultValue={employee?.address ?? ""} style={input} />
         </Field>
         <Field text="Hire date">
           <input name="hireDate" type="date" defaultValue={employee?.hireDate ?? ""} style={input} />

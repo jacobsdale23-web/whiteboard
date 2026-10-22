@@ -45,6 +45,7 @@ export type CandidateInput = {
   name: string;
   phone: string;
   email: string;
+  address: string;
   position: string;
   source: string;
   stage: string;
@@ -62,6 +63,7 @@ export async function saveCandidate(id: string | null, data: CandidateInput): Pr
     name,
     phone: orNull(data.phone),
     email: orNull(data.email),
+    address: orNull(data.address),
     position: orNull(data.position),
     source: orNull(data.source),
     stage: oneOf(CANDIDATE_STAGES, data.stage, "applied"),
@@ -127,6 +129,7 @@ export async function hireCandidate(id: string, opts: { hireDate: string; positi
     position: orNull(opts.position) ?? c.position,
     phone: c.phone,
     email: c.email,
+    address: c.address,
     hireDate,
     status: "active",
     daProgram: cleared ? "active" : "pending",
@@ -149,6 +152,8 @@ export type EmployeeInput = {
   position: string;
   phone: string;
   email: string;
+  personalEmail: string;
+  address: string;
   hireDate: string;
   status: string;
   terminatedDate: string;
@@ -170,6 +175,8 @@ export async function saveEmployee(id: string | null, data: EmployeeInput): Prom
     position: orNull(data.position),
     phone: orNull(data.phone),
     email: orNull(data.email),
+    personalEmail: orNull(data.personalEmail),
+    address: orNull(data.address),
     hireDate: isoDate(data.hireDate),
     status,
     terminatedDate: status === "terminated" ? isoDate(data.terminatedDate) ?? today() : null,
