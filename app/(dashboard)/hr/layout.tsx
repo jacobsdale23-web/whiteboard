@@ -12,6 +12,7 @@ export default async function HrLayout({ children }: { children: React.ReactNode
             ["/hr", "Overview"],
             ["/hr/candidates", "Candidates"],
             ["/hr/employees", "Employees"],
+            ["/hr/oq-invites", "OQ practice links"],
           ].map(([href, text]) => (
             <Link key={href} href={href} style={{ padding: "7px 14px", borderRadius: 6, background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--ink)", textDecoration: "none", fontSize: "0.85rem", fontWeight: 600 }}>
               {text}

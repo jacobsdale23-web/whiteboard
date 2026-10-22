@@ -526,3 +526,23 @@ export const hrOqQuals = pgTable("hr_oq_quals", {
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// ---------- OQ practice invite links ----------
+
+// A personal link that opens only the OQ practice tests, with no account or
+// password. The token in the URL is the credential: long, random, and valid
+// until someone revokes it (there is deliberately no expiration).
+export const oqInvites = pgTable("oq_invites", {
+  id: text("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  name: text("name").notNull(),
+  email: text("email"),
+  companyId: text("company_id").notNull(),
+  employeeId: text("employee_id"),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  revokedAt: timestamp("revoked_at"),
+  lastUsedAt: timestamp("last_used_at"),
+  useCount: integer("use_count").notNull().default(0),
+  sentAt: timestamp("sent_at"),
+});

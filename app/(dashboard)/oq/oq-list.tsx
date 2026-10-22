@@ -5,7 +5,7 @@ import Link from "next/link";
 
 export type OqTask = { code: string; name: string; exams: { id: string; title: string; count: number }[] };
 
-export default function OqList({ tasks }: { tasks: OqTask[] }) {
+export default function OqList({ tasks, basePath = "/oq" }: { tasks: OqTask[]; basePath?: string }) {
   const [q, setQ] = useState("");
   const needle = q.trim().toLowerCase();
   const shown = needle
@@ -28,7 +28,7 @@ export default function OqList({ tasks }: { tasks: OqTask[] }) {
             {t.exams.map((e) => (
               <Link
                 key={e.id}
-                href={`/oq/${e.id}`}
+                href={`${basePath}/${e.id}`}
                 style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "var(--surface-2)", borderRadius: 10, padding: "14px 14px", minHeight: 52, color: "inherit", textDecoration: "none", fontWeight: 600 }}
               >
                 <span>{e.title}</span>
