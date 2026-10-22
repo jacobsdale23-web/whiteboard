@@ -1,4 +1,4 @@
-import { getSessionAndProfile } from "@/lib/auth/current-user";
+import { getWorkspace } from "@/lib/auth/company";
 import { loadEquipmentHistory, formatDowntime } from "@/lib/equipment-history";
 
 function csv(v: string | number | null | undefined): string {
@@ -7,13 +7,14 @@ function csv(v: string | number | null | undefined): string {
 }
 
 export async function GET(req: Request) {
-  const current = await getSessionAndProfile();
-  if (!current || current.profile.role !== "admin") return new Response("Admins only.", { status: 403 });
+  const current = await getWorkspace();
+  if (!current?.active || current.profile.role !== "admin") return new Response("Admins only.", { status: 403 });
+  const company = current.active;
 
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") || "").trim().toLowerCase();
   const status = url.searchParams.get("status") || "";
-  const rows = (await loadEquipmentHistory()).filter(
+  const rows = (await loadEquipmentHistory(company.id)).filter(
     (r) =>
       (!status || r.status === status) &&
       (!q || [r.equipment, r.project, r.reportedBy, r.resolvedBy || "", r.problem, r.resolution || ""].some((s) => s.toLowerCase().includes(q)))
@@ -43,6 +44,6 @@ export async function GET(req: Request) {
     );
   }
   return new Response("\uFEFF" + lines.join("\r\n"), {
-    headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="equipment-repair-log-${new Date().toISOString().slice(0, 10)}.csv"` },
+    headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="equipment-repair-log-${company.id}-${new Date().toISOString().slice(0, 10)}.csv"` },
   });
 }

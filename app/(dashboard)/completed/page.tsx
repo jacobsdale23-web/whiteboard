@@ -1,13 +1,15 @@
 import { db } from "@/lib/db";
 import { projects } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
+import { and, eq } from "drizzle-orm";
+import { isSafetyViewer } from "@/lib/auth/current-user";
+import { getWorkspace, requireCompany } from "@/lib/auth/company";
 import CompletedList from "./completed-list";
 
 export default async function CompletedPage() {
-  const current = await getSessionAndProfile();
-  const hideValue = !!current && isSafetyViewer(current.profile);
-  const rows = await db.select().from(projects).where(eq(projects.status, "complete"));
+  const ws = await getWorkspace();
+  const company = await requireCompany();
+  const hideValue = !!ws && isSafetyViewer(ws.profile);
+  const rows = await db.select().from(projects).where(and(eq(projects.status, "complete"), eq(projects.companyId, company.id)));
   const completed = hideValue ? rows.map((p) => ({ ...p, value: null })) : rows;
 
   return (

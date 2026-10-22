@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { projects } from "@/lib/db/schema";
 import { computeNextProjectNumber } from "@/lib/project-numbers";
 import { assertNotSafety } from "@/lib/auth/current-user";
+import { assertCompanyAccess, requireCompany } from "@/lib/auth/company";
 
 export type ProjectInput = {
   name: string;
@@ -26,7 +27,10 @@ export async function saveProject(id: string | null, data: ProjectInput) {
   await assertNotSafety();
   if (!data.name.trim()) throw new Error("Project name is required.");
 
+  const company = await requireCompany();
   const existing = id ? await db.query.projects.findFirst({ where: eq(projects.id, id) }) : null;
+  if (existing) await assertCompanyAccess(existing.companyId);
+  const companyId = existing?.companyId ?? company.id;
 
   // Auto-assign only on the transition into "active" — never for upcoming
   // work or opportunities — and only for lump-sum/unit-price jobs. T&M
@@ -35,7 +39,8 @@ export async function saveProject(id: string | null, data: ProjectInput) {
   const justActivated = data.status === "active" && (!existing || existing.status !== "active");
   if (!projectNumber && justActivated && data.billingType === "lump_sum") {
     const year = data.startDate ? parseInt(data.startDate.slice(0, 4), 10) : new Date().getFullYear();
-    const allNumbers = await db.select({ projectNumber: projects.projectNumber }).from(projects);
+    // Each company numbers its own jobs (26-001, 26-002 ...).
+    const allNumbers = await db.select({ projectNumber: projects.projectNumber }).from(projects).where(eq(projects.companyId, companyId));
     projectNumber = computeNextProjectNumber(allNumbers.map((r) => r.projectNumber), year);
   }
 
@@ -56,7 +61,7 @@ export async function saveProject(id: string | null, data: ProjectInput) {
   if (id) {
     await db.update(projects).set(values).where(eq(projects.id, id));
   } else {
-    await db.insert(projects).values({ id: randomUUID(), ...values });
+    await db.insert(projects).values({ id: randomUUID(), companyId, ...values });
   }
 
   revalidatePath("/board");
@@ -66,6 +71,9 @@ export async function saveProject(id: string | null, data: ProjectInput) {
 
 export async function deleteProject(id: string) {
   await assertNotSafety();
+  const existing = await db.query.projects.findFirst({ where: eq(projects.id, id) });
+  if (!existing) return;
+  await assertCompanyAccess(existing.companyId);
   await db.delete(projects).where(eq(projects.id, id));
   revalidatePath("/board");
   revalidatePath("/calendar");

@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { projects, milestones, dailyLogs, lineItems, expenses, invoices, payApps, sovItems, sovEntries, billingRates, billingTasks, tmInvoices, jsaForms, leakNumbers, receipts } from "@/lib/db/schema";
 import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
+import { canAccessCompany, getWorkspace, switchCompanyUrl } from "@/lib/auth/company";
 import MilestoneSection from "./milestone-section";
 import LogSection from "./log-section";
 import BudgetSection from "./budget-section";
@@ -17,13 +18,16 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const { id } = await params;
 
   const project = await db.query.projects.findFirst({ where: eq(projects.id, id) });
-  if (!project) notFound();
+  if (!project || !(await canAccessCompany(project.companyId))) notFound();
+  // A link into another of their companies (a bookmark, say) switches company first.
+  const workspace = await getWorkspace();
+  if (workspace?.active && workspace.active.id !== project.companyId) redirect(switchCompanyUrl(project.companyId, `/projects/${id}`));
 
   const current = await getSessionAndProfile();
   const isAdmin = current?.profile.role === "admin";
   // Safety coordinator: schedule, JSAs and daily logs only, read-only.
   const readOnly = !!current && isSafetyViewer(current.profile);
-  const people = await getPeople();
+  const people = await getPeople(project.companyId);
   const isTm = project.billingType === "tm";
 
   const [projectMilestones, projectLogs, projectLineItems, projectJsas, projectLeakNumbers, projectTaskNumbers] = await Promise.all([

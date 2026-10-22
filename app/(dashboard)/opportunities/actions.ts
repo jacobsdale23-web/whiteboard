@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { opportunities, projects } from "@/lib/db/schema";
 import { getSessionAndProfile, isSafetyViewer, assertNotSafety } from "@/lib/auth/current-user";
+import { assertCompanyAccess, canAccessCompany, requireCompany } from "@/lib/auth/company";
 
 export type OpportunityFormState = { error?: string } | null;
 
@@ -30,9 +31,12 @@ export async function saveOpportunity(
   };
 
   if (id) {
+    const existing = await db.query.opportunities.findFirst({ where: eq(opportunities.id, id) });
+    if (!existing || !(await canAccessCompany(existing.companyId))) return { error: "That opportunity no longer exists." };
     await db.update(opportunities).set(data).where(eq(opportunities.id, id));
   } else {
-    await db.insert(opportunities).values({ id: randomUUID(), ...data });
+    const company = await requireCompany();
+    await db.insert(opportunities).values({ id: randomUUID(), companyId: company.id, ...data });
   }
 
   revalidatePath("/opportunities");
@@ -41,6 +45,9 @@ export async function saveOpportunity(
 
 export async function deleteOpportunity(id: string) {
   await assertNotSafety();
+  const existing = await db.query.opportunities.findFirst({ where: eq(opportunities.id, id) });
+  if (!existing) return;
+  await assertCompanyAccess(existing.companyId);
   await db.delete(opportunities).where(eq(opportunities.id, id));
   revalidatePath("/opportunities");
 }
@@ -61,7 +68,7 @@ export async function updateBidStatus(
   const bidStatus = String(formData.get("bidStatus") || "Open");
 
   const existing = await db.query.opportunities.findFirst({ where: eq(opportunities.id, id) });
-  if (!existing) return { error: "That opportunity no longer exists." };
+  if (!existing || !(await canAccessCompany(existing.companyId))) return { error: "That opportunity no longer exists." };
 
   const wasWon = existing.bidStatus === "Won";
   await db.update(opportunities).set({ bidValue: bidValue as never, bidStatus }).where(eq(opportunities.id, id));
@@ -71,6 +78,7 @@ export async function updateBidStatus(
       .insert(projects)
       .values({
         id: randomUUID(),
+        companyId: existing.companyId,
         name: existing.jobName,
         location: existing.location,
         status: "upcoming",

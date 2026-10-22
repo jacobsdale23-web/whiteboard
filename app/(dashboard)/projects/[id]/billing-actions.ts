@@ -74,13 +74,15 @@ export async function deleteBillingTask(projectId: string, id: string) {
 // period, so a crew member billed here who was also logged under a
 // different crew on the same date gets flagged as an overlap.
 async function computeWarnings(projectId: string, periodStart: string, periodEnd: string, items: TmLineItem[]) {
+  const thisProject = await db.query.projects.findFirst({ where: eq(projects.id, projectId) });
   const [periodLogs, allProjects] = await Promise.all([
     db.select().from(dailyLogs).where(and(gte(dailyLogs.date, periodStart), lte(dailyLogs.date, periodEnd))),
-    db.select().from(projects),
+    // Overlaps are only checked within the same company.
+    thisProject ? db.select().from(projects).where(eq(projects.companyId, thisProject.companyId)) : Promise.resolve([]),
   ]);
   const projectNameById = new Map(allProjects.map((p) => [p.id, p.name]));
   const otherLogs = periodLogs
-    .filter((l) => l.projectId !== projectId)
+    .filter((l) => l.projectId !== projectId && projectNameById.has(l.projectId))
     .map((l) => ({ projectId: l.projectId, projectName: projectNameById.get(l.projectId) || l.projectId, date: l.date, crew: l.crew }));
 
   return [...validateLineItems(items), ...findCrossCrewOverlaps(items, projectId, otherLogs)];

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { crew, foremanCrews } from "@/lib/db/schema";
 
@@ -9,9 +9,12 @@ const key = (s: string) => clean(s).toLowerCase();
 export type People = { names: string[]; usualCrews: Record<string, string[]> };
 
 // Names for the suggestion lists, plus each foreman's usual crew from the last
-// three weeks (most frequent first).
-export async function getPeople(): Promise<People> {
-  const [people, pairs] = await Promise.all([db.select().from(crew), db.select().from(foremanCrews)]);
+// three weeks (most frequent first). Each company keeps its own lists.
+export async function getPeople(companyId: string): Promise<People> {
+  const [people, pairs] = await Promise.all([
+    db.select().from(crew).where(eq(crew.companyId, companyId)),
+    db.select().from(foremanCrews).where(eq(foremanCrews.companyId, companyId)),
+  ]);
 
   const names = people
     .filter((p) => p.active)
@@ -39,8 +42,8 @@ export async function getPeople(): Promise<People> {
 
 // Typing "james lindsay" should save as "James Lindsay" if that person exists,
 // so the lists don't fill up with spelling variants. Unknown names are kept as typed.
-export async function rememberNames(rawNames: string[]): Promise<Map<string, string>> {
-  const existing = await db.select().from(crew);
+export async function rememberNames(companyId: string, rawNames: string[]): Promise<Map<string, string>> {
+  const existing = await db.select().from(crew).where(eq(crew.companyId, companyId));
   const byKey = new Map(existing.map((p) => [key(p.name), clean(p.name)]));
   const resolved = new Map<string, string>();
   for (const raw of rawNames) {
@@ -52,7 +55,7 @@ export async function rememberNames(rawNames: string[]): Promise<Map<string, str
       continue;
     }
     // A new hire: add to the list so the next foreman sees them in the suggestions.
-    await db.insert(crew).values({ id: randomUUID(), name, active: true, role: "worker" });
+    await db.insert(crew).values({ id: randomUUID(), companyId, name, active: true, role: "worker" });
     byKey.set(key(name), name);
     resolved.set(raw, name);
   }
@@ -60,14 +63,14 @@ export async function rememberNames(rawNames: string[]): Promise<Map<string, str
 }
 
 // Count this crew under this foreman so "usual crew" stays current.
-export async function recordCrewUse(foreman: string, members: string[], date: string) {
+export async function recordCrewUse(companyId: string, foreman: string, members: string[], date: string) {
   const f = clean(foreman);
   if (!f) return;
   for (const m of new Set(members.map(clean).filter(Boolean))) {
     await db.execute(sql`
-      insert into foreman_crews (id, foreman, member, times, last_seen)
-      values (${randomUUID()}, ${f}, ${m}, 1, ${date})
-      on conflict (lower(foreman), lower(member)) do update
+      insert into foreman_crews (id, company_id, foreman, member, times, last_seen)
+      values (${randomUUID()}, ${companyId}, ${f}, ${m}, 1, ${date})
+      on conflict (company_id, lower(foreman), lower(member)) do update
       set times = foreman_crews.times + 1,
           last_seen = case when excluded.last_seen > foreman_crews.last_seen then excluded.last_seen else foreman_crews.last_seen end`);
   }

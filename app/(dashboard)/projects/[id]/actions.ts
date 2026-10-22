@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { milestones, dailyLogs, leakNumbers, billingTasks } from "@/lib/db/schema";
 import { rememberNames, recordCrewUse } from "@/lib/people";
 import { getSessionAndProfile, isSafetyViewer, assertNotSafety } from "@/lib/auth/current-user";
+import { requireProject } from "@/lib/auth/company";
 
 // ---------- schedule (milestones) ----------
 
@@ -43,7 +44,7 @@ function pickedValue(formData: FormData, name: string): string {
 
 // Reads and validates the log form (shared by add and edit), tidies typed
 // names to match known people, and saves any new leak / task numbers.
-async function prepareLog(projectId: string, formData: FormData) {
+async function prepareLog(companyId: string, projectId: string, formData: FormData) {
   const date = String(formData.get("date") || "");
   const leakNumber = pickedValue(formData, "leakNumber") || "N/A";
   const foreman = String(formData.get("foreman") || "").trim();
@@ -63,7 +64,7 @@ async function prepareLog(projectId: string, formData: FormData) {
   if (!date || !foreman || !description) return null;
 
   // Match typed names to known people (fixes capitalization) and save new hires.
-  const resolved = await rememberNames([foreman, ...crewRows.map((c) => c.name)]);
+  const resolved = await rememberNames(companyId, [foreman, ...crewRows.map((c) => c.name)]);
   const foremanName = resolved.get(foreman) || foreman;
   const crewFinal = crewRows.map((c) => ({ ...c, name: resolved.get(c.name) || c.name }));
 
@@ -81,9 +82,10 @@ async function prepareLog(projectId: string, formData: FormData) {
 
 export async function addLog(projectId: string, formData: FormData) {
   await assertNotSafety();
-  const values = await prepareLog(projectId, formData);
+  const project = await requireProject(projectId);
+  const values = await prepareLog(project.companyId, projectId, formData);
   if (!values) return;
-  await recordCrewUse(values.foreman, values.crew.map((c) => c.name), values.date);
+  await recordCrewUse(project.companyId, values.foreman, values.crew.map((c) => c.name), values.date);
   await db.insert(dailyLogs).values({ id: randomUUID(), projectId, ...values });
   revalidatePath(`/projects/${projectId}`);
 }
@@ -95,10 +97,11 @@ export async function updateLog(projectId: string, logId: string, formData: Form
   const current = await getSessionAndProfile();
   if (!current) return { error: "Please sign in again." };
   if (isSafetyViewer(current.profile)) return { error: "This account is view-only." };
+  const project = await requireProject(projectId);
   const existing = await db.query.dailyLogs.findFirst({ where: and(eq(dailyLogs.id, logId), eq(dailyLogs.projectId, projectId)) });
   if (!existing) return { error: "That log no longer exists." };
 
-  const values = await prepareLog(projectId, formData);
+  const values = await prepareLog(project.companyId, projectId, formData);
   if (!values) return { error: "Date, foreman and a description of the work are required." };
 
   await db

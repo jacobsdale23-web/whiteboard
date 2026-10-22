@@ -14,7 +14,7 @@ export type PdfLog = {
   description: string | null;
 };
 
-export type PdfProject = { name: string; projectNumber: string | null; customer: string | null; location: string | null };
+export type PdfProject = { name: string; projectNumber: string | null; customer: string | null; location: string | null; companyName: string };
 
 const fmtDate = (iso: string) => {
   const d = new Date(iso + "T00:00:00");
@@ -36,7 +36,7 @@ export async function buildDailyLogsPdf(project: PdfProject, logs: PdfLog[], ran
   if (project.customer) w.text(`Customer: ${project.customer}`);
   if (project.location) w.text(`Location: ${project.location}`);
   w.text(`${rangeLabel}  -  ${logs.length} daily log${logs.length === 1 ? "" : "s"}`, { color: [0.4, 0.4, 0.4] });
-  w.text("Feliciana Welders, Inc.", { color: [0.4, 0.4, 0.4] });
+  w.text(project.companyName, { color: [0.4, 0.4, 0.4] });
   w.gap(8);
 
   const grandHours = logs.reduce((n, l) => n + l.crew.reduce((m, c) => m + (Number(c.hours) || 0), 0), 0);

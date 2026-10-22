@@ -1,13 +1,16 @@
 import { db } from "@/lib/db";
 import { projects, crew } from "@/lib/db/schema";
-import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
+import { eq } from "drizzle-orm";
+import { isSafetyViewer } from "@/lib/auth/current-user";
+import { getWorkspace, requireCompany } from "@/lib/auth/company";
 import BoardView from "./board-view";
 
 export default async function BoardPage() {
-  const current = await getSessionAndProfile();
-  const readOnly = !!current && isSafetyViewer(current.profile);
-  const allProjects = await db.select().from(projects);
-  const allCrew = await db.select().from(crew);
+  const ws = await getWorkspace();
+  const company = await requireCompany();
+  const readOnly = !!ws && isSafetyViewer(ws.profile);
+  const allProjects = await db.select().from(projects).where(eq(projects.companyId, company.id));
+  const allCrew = await db.select().from(crew).where(eq(crew.companyId, company.id));
 
   const toBoard = (p: (typeof allProjects)[number]) => ({
     id: p.id,

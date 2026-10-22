@@ -2,7 +2,7 @@ import { and, eq, gte, lte } from "drizzle-orm";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import nodemailer from "nodemailer";
 import { db } from "@/lib/db";
-import { jsaForms, profiles, projects } from "@/lib/db/schema";
+import { jsaForms, profileCompanies, profiles, projects } from "@/lib/db/schema";
 import { Writer, PAGE_W, MARGIN } from "@/lib/pdf-writer";
 
 type Jsa = typeof jsaForms.$inferSelect;
@@ -65,16 +65,18 @@ async function buildCrewPdf(foreman: string, start: string, end: string, entries
   return doc.save();
 }
 
-export async function buildWeeklyJsaReport(end: string): Promise<WeeklyReport> {
+export async function buildWeeklyJsaReport(end: string, companyId: string): Promise<WeeklyReport> {
   const endDate = new Date(end + "T00:00:00");
   const startDate = new Date(endDate);
   startDate.setDate(startDate.getDate() - 6);
   const start = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, "0")}-${String(startDate.getDate()).padStart(2, "0")}`;
 
-  const [jsas, allProjects] = await Promise.all([
+  const [weekJsas, allProjects] = await Promise.all([
     db.select().from(jsaForms).where(and(gte(jsaForms.date, start), lte(jsaForms.date, end))),
-    db.select({ id: projects.id, name: projects.name, projectNumber: projects.projectNumber }).from(projects),
+    db.select({ id: projects.id, name: projects.name, projectNumber: projects.projectNumber }).from(projects).where(eq(projects.companyId, companyId)),
   ]);
+  const inCompany = new Set(allProjects.map((p) => p.id));
+  const jsas = weekJsas.filter((j) => inCompany.has(j.projectId));
   const projectLabel = new Map(allProjects.map((p) => [p.id, p.projectNumber ? `${p.projectNumber} ${p.name}` : p.name]));
 
   const byForeman = new Map<string, { display: string; entries: { jsa: Jsa; project: string }[] }>();
@@ -98,16 +100,21 @@ export async function buildWeeklyJsaReport(end: string): Promise<WeeklyReport> {
   return { start, end, crews };
 }
 
-export async function emailWeeklyJsaReport(report: WeeklyReport): Promise<{ to: string[] }> {
+// Who gets a company's report: JSA_REPORT_TO overrides (handy for sending to
+// yourself first); otherwise everyone marked Safety Coordinator on the Team
+// page who can open that company.
+export async function jsaRecipients(companyId: string): Promise<string[]> {
+  const override = (process.env.JSA_REPORT_TO || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (override.length) return override;
+  const safety = await db.select().from(profiles).where(eq(profiles.isSafety, true));
+  const member = await db.select().from(profileCompanies).where(eq(profileCompanies.companyId, companyId));
+  const ids = new Set(member.map((m) => m.profileId));
+  return safety.filter((p) => p.allCompanies || ids.has(p.id)).map((p) => p.email).filter(Boolean);
+}
+
+export async function emailWeeklyJsaReport(report: WeeklyReport, companyName: string, to: string[]): Promise<{ to: string[] }> {
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASSWORD;
-  // JSA_REPORT_TO overrides (handy for sending to yourself first); otherwise the
-  // report goes to everyone marked Safety Coordinator on the Team page.
-  let to = (process.env.JSA_REPORT_TO || "").split(",").map((s) => s.trim()).filter(Boolean);
-  if (!to.length) {
-    const safety = await db.select({ email: profiles.email }).from(profiles).where(eq(profiles.isSafety, true));
-    to = safety.map((p) => p.email).filter(Boolean);
-  }
   if (!user || !pass) throw new Error("SMTP_USER and SMTP_PASSWORD must be set.");
   if (!to.length) throw new Error("No recipient: mark a Safety Coordinator on the Team page, or set JSA_REPORT_TO.");
 
@@ -123,13 +130,13 @@ export async function emailWeeklyJsaReport(report: WeeklyReport): Promise<{ to: 
   const total = report.crews.reduce((n, c) => n + c.jsaCount, 0);
   const lines = report.crews.map((c) => `  - ${c.foreman}: ${c.jsaCount} JSA${c.jsaCount === 1 ? "" : "s"}`);
   const text = total
-    ? `Attached are the Job Safety Analyses submitted ${report.start} to ${report.end}, one PDF per crew.\n\n${lines.join("\n")}\n\nTotal: ${total}\n\nSent automatically by White Board.`
-    : `No JSAs were submitted ${report.start} to ${report.end}.\n\nSent automatically by White Board.`;
+    ? `Attached are the ${companyName} Job Safety Analyses submitted ${report.start} to ${report.end}, one PDF per crew.\n\n${lines.join("\n")}\n\nTotal: ${total}\n\nSent automatically by White Board.`
+    : `No ${companyName} JSAs were submitted ${report.start} to ${report.end}.\n\nSent automatically by White Board.`;
 
   await transport.sendMail({
     from: `White Board <${user}>`,
     to,
-    subject: `Weekly JSA Report: ${report.start} to ${report.end}`,
+    subject: `Weekly JSA Report - ${companyName}: ${report.start} to ${report.end}`,
     text,
     attachments: report.crews.map((c) => ({ filename: c.filename, content: Buffer.from(c.pdf), contentType: "application/pdf" })),
   });

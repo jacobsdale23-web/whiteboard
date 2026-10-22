@@ -4,8 +4,9 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { eq, and } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { bidItems, estimateDetails, opportunities } from "@/lib/db/schema";
+import { bidItems, companies, estimateDetails, opportunities } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
+import { assertCompanyAccess } from "@/lib/auth/company";
 import { computeEstimateSummary } from "@/lib/estimate";
 import * as XLSX from "xlsx";
 
@@ -126,6 +127,8 @@ export async function exportEstimateExcel(opportunityId: string): Promise<{ file
   await requireAdmin();
   const [opportunity] = await db.select().from(opportunities).where(eq(opportunities.id, opportunityId));
   if (!opportunity) throw new Error("Opportunity not found.");
+  await assertCompanyAccess(opportunity.companyId);
+  const [company] = await db.select().from(companies).where(eq(companies.id, opportunity.companyId));
   const [details] = await db.select().from(estimateDetails).where(eq(estimateDetails.opportunityId, opportunityId));
   const items = await db.select().from(bidItems).where(eq(bidItems.opportunityId, opportunityId));
   const sortedItems = items.slice().sort((a, b) => Number(a.order) - Number(b.order));
@@ -155,7 +158,7 @@ export async function exportEstimateExcel(opportunityId: string): Promise<{ file
     ["Contact Phone:", details?.contactPhone || ""],
     ["Contact Email:", details?.contactEmail || ""],
     [],
-    ["Contractor Company:", "Feliciana Welders, Inc."],
+    ["Contractor Company:", company?.name ?? ""],
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(coverRows), "Cover Sheet");
 

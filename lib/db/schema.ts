@@ -1,4 +1,24 @@
-import { pgTable, text, timestamp, numeric, jsonb, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, jsonb, boolean, integer, primaryKey } from "drizzle-orm/pg-core";
+
+// The parent company and its sister companies each get an identical White
+// Board. Top-level records (projects, opportunities, crew names, equipment
+// tickets) carry a company_id; everything under a project follows its project.
+export const companies = pgTable("companies", {
+  id: text("id").primaryKey(), // "fwi" | "om" | "pip" | "pgroup"
+  name: text("name").notNull(),
+  shortName: text("short_name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+// Which companies a (non all-companies) user may open.
+export const profileCompanies = pgTable(
+  "profile_companies",
+  {
+    profileId: text("profile_id").notNull(),
+    companyId: text("company_id").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.profileId, t.companyId] })]
+);
 
 // One row per Neon Auth user, created on first sign-in. `role` is what
 // gates admin-only pages/actions on the server — never trust a client claim.
@@ -12,6 +32,8 @@ export const profiles = pgTable("profiles", {
   // Safety coordinators get a view-only account limited to projects, the
   // calendar, daily logs, JSAs and OQ practice tests (non-admins only).
   isSafety: boolean("is_safety").notNull().default(false),
+  // Works across every company (and any added later) without per-company rows.
+  allCompanies: boolean("all_companies").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -20,6 +42,7 @@ export const profiles = pgTable("profiles", {
 // read these; any signed-in user can file one.
 export const equipmentTickets = pgTable("equipment_tickets", {
   id: text("id").primaryKey(),
+  companyId: text("company_id").notNull(),
   projectId: text("project_id").notNull(),
   reportedBy: text("reported_by").notNull(),
   date: text("date").notNull(),
@@ -64,6 +87,7 @@ export const equipmentTicketUpdates = pgTable("equipment_ticket_updates", {
 
 export const projects = pgTable("projects", {
   id: text("id").primaryKey(),
+  companyId: text("company_id").notNull(),
   name: text("name").notNull(),
   location: text("location"),
   status: text("status").notNull().default("upcoming"), // "active" | "upcoming" | "complete"
@@ -84,6 +108,7 @@ export const projects = pgTable("projects", {
 
 export const crew = pgTable("crew", {
   id: text("id").primaryKey(),
+  companyId: text("company_id").notNull(),
   name: text("name").notNull(),
   active: boolean("active").notNull().default(true),
   role: text("role").notNull().default("foreman"), // "foreman" | "worker" — only foremen show up at the Shop
@@ -94,6 +119,7 @@ export const crew = pgTable("crew", {
 // foremen can always change the crew, since people move between foremen.
 export const foremanCrews = pgTable("foreman_crews", {
   id: text("id").primaryKey(),
+  companyId: text("company_id").notNull(),
   foreman: text("foreman").notNull(),
   member: text("member").notNull(),
   times: numeric("times").notNull().default("1"),
@@ -309,6 +335,7 @@ export const sovEntries = pgTable("sov_entries", {
 
 export const opportunities = pgTable("opportunities", {
   id: text("id").primaryKey(),
+  companyId: text("company_id").notNull(),
   kind: text("kind").notNull().default("Opportunity"), // "Opportunity" | "Meeting"
   oppType: text("opp_type").notNull().default("Bid Job"), // Bid Job | Meeting | Hot Tap | O&M | T&M (Atmos)
   jobName: text("job_name").notNull(),

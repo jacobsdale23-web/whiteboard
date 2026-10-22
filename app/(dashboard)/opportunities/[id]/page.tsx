@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { opportunities, bidItems, estimateDetails, planFiles, planReviews } from "@/lib/db/schema";
 import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
+import { canAccessCompany, getWorkspace, switchCompanyUrl } from "@/lib/auth/company";
 import { computeEstimateSummary } from "@/lib/estimate";
 import { isSimilarText } from "@/lib/similar-bids";
 import EstimateSection from "./estimate-section";
@@ -18,7 +19,9 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
   if (viewer && isSafetyViewer(viewer.profile)) redirect("/board");
 
   const opportunity = await db.query.opportunities.findFirst({ where: eq(opportunities.id, id) });
-  if (!opportunity) notFound();
+  if (!opportunity || !(await canAccessCompany(opportunity.companyId))) notFound();
+  const ws = await getWorkspace();
+  if (ws?.active && ws.active.id !== opportunity.companyId) redirect(switchCompanyUrl(opportunity.companyId, `/opportunities/${id}`));
 
   const current = await getSessionAndProfile();
   const isAdmin = current?.profile.role === "admin";
@@ -54,7 +57,7 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
       </div>
 
       {isAdmin ? (
-        <EstimateSectionLoader opportunityId={id} customer={opportunity.customer} />
+        <EstimateSectionLoader opportunityId={id} companyId={opportunity.companyId} customer={opportunity.customer} />
       ) : (
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
           <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase", marginBottom: 10 }}>Estimate</h3>
@@ -65,13 +68,14 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
   );
 }
 
-async function EstimateSectionLoader({ opportunityId, customer }: { opportunityId: string; customer: string | null }) {
+async function EstimateSectionLoader({ opportunityId, companyId, customer }: { opportunityId: string; companyId: string; customer: string | null }) {
   const [items, details, files, reviews, allOpportunities, allItems, allDetails] = await Promise.all([
     db.select().from(bidItems).where(eq(bidItems.opportunityId, opportunityId)),
     db.query.estimateDetails.findFirst({ where: eq(estimateDetails.opportunityId, opportunityId) }),
     db.select().from(planFiles).where(eq(planFiles.opportunityId, opportunityId)),
     db.select().from(planReviews).where(eq(planReviews.opportunityId, opportunityId)),
-    db.select().from(opportunities),
+    // Similar-bid history stays within the company.
+    db.select().from(opportunities).where(eq(opportunities.companyId, companyId)),
     db.select().from(bidItems),
     db.select().from(estimateDetails),
   ]);

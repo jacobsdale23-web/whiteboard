@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { equipmentTickets, equipmentTicketCosts, projects } from "@/lib/db/schema";
 
@@ -19,8 +20,12 @@ export type HistoryRow = {
   partsCost: number; // sum of the parts invoices attached to the ticket
 };
 
-export async function loadEquipmentHistory(): Promise<HistoryRow[]> {
-  const [tickets, allProjects, costs] = await Promise.all([db.select().from(equipmentTickets), db.select().from(projects), db.select().from(equipmentTicketCosts)]);
+export async function loadEquipmentHistory(companyId: string): Promise<HistoryRow[]> {
+  const [tickets, allProjects, costs] = await Promise.all([
+    db.select().from(equipmentTickets).where(eq(equipmentTickets.companyId, companyId)),
+    db.select().from(projects).where(eq(projects.companyId, companyId)),
+    db.select().from(equipmentTicketCosts),
+  ]);
   const costByTicket = new Map<string, number>();
   for (const c of costs) costByTicket.set(c.ticketId, (costByTicket.get(c.ticketId) || 0) + Number(c.amount));
   const label = new Map(allProjects.map((p) => [p.id, p.projectNumber ? `${p.projectNumber} ${p.name}` : p.name]));

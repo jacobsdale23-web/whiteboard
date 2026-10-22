@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { equipmentTickets, equipmentTicketUpdates, equipmentTicketCosts, projects } from "@/lib/db/schema";
-import { getSessionAndProfile, canSeeEquipment } from "@/lib/auth/current-user";
+import { eq } from "drizzle-orm";
+import { canSeeEquipment } from "@/lib/auth/current-user";
+import { getWorkspace } from "@/lib/auth/company";
 import TicketControls from "./ticket-controls";
 import TicketEditor from "./ticket-editor";
 import TicketParts, { type PartCost } from "./ticket-parts";
@@ -19,8 +21,9 @@ const URGENCY_COLOR: Record<string, { bg: string; fg: string }> = {
 const STATUS_LABEL: Record<string, string> = { open: "Open", in_progress: "In progress", resolved: "Resolved" };
 
 export default async function EquipmentPage() {
-  const current = await getSessionAndProfile();
-  if (!current) return null;
+  const current = await getWorkspace();
+  if (!current?.active) return null;
+  const company = current.active;
 
   // Real access check — hiding the nav link alone would not protect this page.
   if (!canSeeEquipment(current.profile)) {
@@ -33,8 +36,8 @@ export default async function EquipmentPage() {
   }
 
   const [tickets, allProjects, allUpdates, allCosts] = await Promise.all([
-    db.select().from(equipmentTickets),
-    db.select().from(projects),
+    db.select().from(equipmentTickets).where(eq(equipmentTickets.companyId, company.id)),
+    db.select().from(projects).where(eq(projects.companyId, company.id)),
     db.select().from(equipmentTicketUpdates),
     db.select().from(equipmentTicketCosts),
   ]);

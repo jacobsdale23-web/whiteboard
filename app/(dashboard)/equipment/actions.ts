@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { equipmentTickets, equipmentTicketUpdates, equipmentTicketCosts } from "@/lib/db/schema";
 import { deleteObject } from "@/lib/storage/s3";
 import { getSessionAndProfile, canSeeEquipment } from "@/lib/auth/current-user";
+import { canAccessCompany } from "@/lib/auth/company";
 
 const STATUSES = ["open", "in_progress", "resolved"];
 
@@ -22,7 +23,7 @@ export async function editEquipmentTicket(
   if (!current || !canSeeEquipment(current.profile)) return { error: "Only mechanics and admins can edit equipment tickets." };
 
   const existing = await db.query.equipmentTickets.findFirst({ where: eq(equipmentTickets.id, id) });
-  if (!existing) return { error: "Ticket not found." };
+  if (!existing || !(await canAccessCompany(existing.companyId))) return { error: "Ticket not found." };
 
   const equipment = data.equipment.trim();
   const problem = data.problem.trim();
@@ -46,6 +47,8 @@ export async function editEquipmentTicket(
 export async function deleteEquipmentTicket(id: string): Promise<{ error?: string }> {
   const current = await getSessionAndProfile();
   if (current?.profile.role !== "admin") return { error: "Only admins can delete equipment tickets." };
+  const ticket = await db.query.equipmentTickets.findFirst({ where: eq(equipmentTickets.id, id) });
+  if (!ticket || !(await canAccessCompany(ticket.companyId))) return { error: "Ticket not found." };
 
   const costs = await db.select().from(equipmentTicketCosts).where(eq(equipmentTicketCosts.ticketId, id));
   for (const c of costs) if (c.storageKey) await deleteObject(c.storageKey);
@@ -66,7 +69,7 @@ export async function updateEquipmentTicket(id: string, status: string, note: st
   if (!STATUSES.includes(status)) return { error: "Unknown status." };
 
   const existing = await db.query.equipmentTickets.findFirst({ where: eq(equipmentTickets.id, id) });
-  if (!existing) return { error: "Ticket not found." };
+  if (!existing || !(await canAccessCompany(existing.companyId))) return { error: "Ticket not found." };
 
   const cleanNote = note.trim();
   if (status === "resolved" && !cleanNote && !existing.resolution) {

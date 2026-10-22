@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { projects } from "@/lib/db/schema";
 import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
+import { canAccessCompany } from "@/lib/auth/company";
 import { improveLogDescription } from "@/lib/improve-text";
 
 const MAX_CHARS = 4000;
@@ -24,6 +25,7 @@ export async function improveDescription(
   if (clean.length > MAX_CHARS) return { error: "That description is too long to improve in one go." };
 
   const project = await db.query.projects.findFirst({ where: eq(projects.id, projectId) });
+  if (project && !(await canAccessCompany(project.companyId))) return { error: "Project not found." };
   try {
     return { improved: await improveLogDescription(clean, project?.name || "", kind) };
   } catch (e) {

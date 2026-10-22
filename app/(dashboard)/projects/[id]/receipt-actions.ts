@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { projects, lineItems, receipts } from "@/lib/db/schema";
 import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
+import { canAccessCompany, canOpenProject } from "@/lib/auth/company";
 import { deleteObject, getDownloadUrl, getObjectBuffer, getUploadUrl } from "@/lib/storage/s3";
 import { scanReceiptImage } from "@/lib/receipt-scan";
 import { TM_RECEIPT_CATEGORIES } from "@/lib/receipt-categories";
@@ -33,6 +34,7 @@ export async function requestReceiptUpload(
   contentType: string
 ): Promise<{ error?: string; uploadUrl?: string; storageKey?: string }> {
   if (!(await requireUser())) return { error: "Please sign in again." };
+  if (!(await canOpenProject(projectId))) return { error: "Project not found." };
   if (!TYPES[contentType]) return { error: "Please use a JPG or PNG photo." };
   const ext = contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg";
   const storageKey = `receipts/${projectId}/${randomUUID()}.${ext}`;
@@ -46,6 +48,7 @@ export async function scanReceipt(
   storageKey: string
 ): Promise<{ error?: string; vendor?: string | null; total?: number | null; date?: string | null }> {
   if (!(await requireUser())) return { error: "Please sign in again." };
+  if (!(await canOpenProject(projectId))) return { error: "Project not found." };
   if (!storageKey.startsWith(`receipts/${projectId}/`)) return { error: "Invalid photo." };
   const ext = storageKey.split(".").pop() || "jpg";
   const mediaType = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
@@ -78,7 +81,7 @@ export async function saveReceipt(
   if (!Number.isFinite(data.amount) || data.amount <= 0) return { error: "Enter the receipt total." };
 
   const project = await db.query.projects.findFirst({ where: eq(projects.id, projectId) });
-  if (!project) return { error: "Project not found." };
+  if (!project || !(await canAccessCompany(project.companyId))) return { error: "Project not found." };
 
   let category: string | null = null;
   let lineItem: string | null = null;
@@ -130,14 +133,14 @@ async function requireAdmin() {
 export async function getReceiptUrl(id: string): Promise<{ error?: string; url?: string }> {
   if (!(await requireAdmin())) return { error: "Only admins can view receipts." };
   const r = await db.query.receipts.findFirst({ where: eq(receipts.id, id) });
-  if (!r) return { error: "Receipt not found." };
+  if (!r || !(await canOpenProject(r.projectId))) return { error: "Receipt not found." };
   return { url: await getDownloadUrl(r.storageKey) };
 }
 
 export async function deleteReceipt(projectId: string, id: string): Promise<{ error?: string }> {
   if (!(await requireAdmin())) return { error: "Only admins can delete receipts." };
   const r = await db.query.receipts.findFirst({ where: and(eq(receipts.id, id), eq(receipts.projectId, projectId)) });
-  if (!r) return {};
+  if (!r || !(await canOpenProject(r.projectId))) return {};
   await deleteObject(r.storageKey);
   await db.delete(receipts).where(eq(receipts.id, id));
   revalidatePath(`/projects/${projectId}`);

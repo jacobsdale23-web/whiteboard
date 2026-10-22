@@ -1,23 +1,45 @@
 import Link from "next/link";
-import { ne } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { equipmentTickets } from "@/lib/db/schema";
-import { getSessionAndProfile, canSeeEquipment, isSafetyViewer } from "@/lib/auth/current-user";
+import { canSeeEquipment, isSafetyViewer } from "@/lib/auth/current-user";
+import { getWorkspace } from "@/lib/auth/company";
 import SignOutButton from "./sign-out-button";
+import CompanySwitcher from "./company-switcher";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const current = await getSessionAndProfile();
+  const current = await getWorkspace();
   // Proxy already guarantees a session reaches here; this is a safety net.
   if (!current) return null;
 
+  // Signed in but not yet assigned to a company: nothing to show until an admin does that.
+  if (!current.active) {
+    return (
+      <main style={{ maxWidth: 520, margin: "80px auto", padding: 28, textAlign: "center" }}>
+        <h1 style={{ fontSize: "1.4rem", textTransform: "uppercase", marginBottom: 12 }}>White Board</h1>
+        <p style={{ marginBottom: 8 }}>
+          Welcome, {current.profile.name}. Your account hasn&apos;t been given access to a company yet.
+        </p>
+        <p style={{ color: "var(--muted)", fontSize: "0.9rem", marginBottom: 20 }}>
+          Ask an admin to add you on the Team page, then refresh this page.
+        </p>
+        <SignOutButton />
+      </main>
+    );
+  }
+
+  const company = current.active;
   const safetyOnly = isSafetyViewer(current.profile);
   const showEquipment = canSeeEquipment(current.profile);
   let openTickets = 0;
   let downTickets = 0;
   if (showEquipment) {
-    const rows = await db.select({ urgency: equipmentTickets.urgency }).from(equipmentTickets).where(ne(equipmentTickets.status, "resolved"));
+    const rows = await db
+      .select({ urgency: equipmentTickets.urgency })
+      .from(equipmentTickets)
+      .where(and(ne(equipmentTickets.status, "resolved"), eq(equipmentTickets.companyId, company.id)));
     openTickets = rows.length;
     downTickets = rows.filter((r) => r.urgency === "down").length;
   }
@@ -85,6 +107,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </nav>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <CompanySwitcher
+            companies={current.companies.map((c) => ({ id: c.id, name: c.name, shortName: c.shortName }))}
+            activeId={company.id}
+          />
           <Link
             href="/team"
             title="Account"

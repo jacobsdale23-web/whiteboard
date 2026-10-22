@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { equipmentTickets, equipmentTicketCosts, equipmentTicketUpdates } from "@/lib/db/schema";
 import { getSessionAndProfile, canSeeEquipment } from "@/lib/auth/current-user";
+import { canAccessCompany } from "@/lib/auth/company";
 import { deleteObject, getDownloadUrl, getUploadUrl } from "@/lib/storage/s3";
 
 const ALLOWED_TYPES: Record<string, string> = {
@@ -46,7 +47,7 @@ export async function addTicketCost(
   if (!current) return { error: "Only mechanics and admins can add parts invoices." };
 
   const ticket = await db.query.equipmentTickets.findFirst({ where: eq(equipmentTickets.id, ticketId) });
-  if (!ticket) return { error: "Ticket not found." };
+  if (!ticket || !(await canAccessCompany(ticket.companyId))) return { error: "Ticket not found." };
   if (!Number.isFinite(data.amount) || data.amount <= 0) return { error: "Enter the invoice amount." };
   if (data.storageKey && !data.storageKey.startsWith(`equipment/${ticketId}/`)) return { error: "Invalid file." };
 
@@ -80,6 +81,8 @@ export async function getInvoiceUrl(costId: string): Promise<{ error?: string; u
   if (!(await requireMechanicOrAdmin())) return { error: "Not allowed." };
   const cost = await db.query.equipmentTicketCosts.findFirst({ where: eq(equipmentTicketCosts.id, costId) });
   if (!cost?.storageKey) return { error: "No file attached." };
+  const owner = await db.query.equipmentTickets.findFirst({ where: eq(equipmentTickets.id, cost.ticketId) });
+  if (!owner || !(await canAccessCompany(owner.companyId))) return { error: "Not allowed." };
   return { url: await getDownloadUrl(cost.storageKey) };
 }
 
@@ -89,6 +92,8 @@ export async function deleteTicketCost(costId: string): Promise<{ error?: string
   if (!current) return { error: "Not allowed." };
   const cost = await db.query.equipmentTicketCosts.findFirst({ where: eq(equipmentTicketCosts.id, costId) });
   if (!cost) return { error: "Not found." };
+  const owner = await db.query.equipmentTickets.findFirst({ where: eq(equipmentTickets.id, cost.ticketId) });
+  if (!owner || !(await canAccessCompany(owner.companyId))) return { error: "Not found." };
   if (current.profile.role !== "admin" && cost.uploadedById !== current.profile.id) {
     return { error: "You can only remove invoices you added." };
   }

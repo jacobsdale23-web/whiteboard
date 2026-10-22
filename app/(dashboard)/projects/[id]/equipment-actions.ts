@@ -3,8 +3,10 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { equipmentTickets } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+import { equipmentTickets, projects } from "@/lib/db/schema";
 import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
+import { canAccessCompany } from "@/lib/auth/company";
 
 const URGENCIES = ["down", "repair_soon", "minor"];
 
@@ -25,7 +27,10 @@ export async function addEquipmentTicket(projectId: string, formData: FormData):
 
   if (!reportedBy || !equipment || !problem) return { error: "Your name, the equipment, and what's wrong are all required." };
 
-  await db.insert(equipmentTickets).values({ id: randomUUID(), projectId, reportedBy, date, equipment, urgency, problem, suspectedCause });
+  const project = await db.query.projects.findFirst({ where: eq(projects.id, projectId) });
+  if (!project || !(await canAccessCompany(project.companyId))) return { error: "Project not found." };
+
+  await db.insert(equipmentTickets).values({ id: randomUUID(), companyId: project.companyId, projectId, reportedBy, date, equipment, urgency, problem, suspectedCause });
   revalidatePath("/equipment");
   return {};
 }

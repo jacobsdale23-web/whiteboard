@@ -1,7 +1,8 @@
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { dailyLogs, lineItems, projects } from "@/lib/db/schema";
+import { companies, dailyLogs, lineItems, projects } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
+import { canAccessCompany } from "@/lib/auth/company";
 import { buildDailyLogsPdf } from "@/lib/daily-log-pdf";
 
 // Admin-only: a client-ready PDF of one log, a hand-picked set (?ids=a,b,c),
@@ -12,7 +13,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const { id } = await params;
   const project = await db.query.projects.findFirst({ where: eq(projects.id, id) });
-  if (!project) return new Response("Project not found.", { status: 404 });
+  if (!project || !(await canAccessCompany(project.companyId))) return new Response("Project not found.", { status: 404 });
+  const company = await db.query.companies.findFirst({ where: eq(companies.id, project.companyId) });
 
   const url = new URL(req.url);
   const ids = (url.searchParams.get("ids") || "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -40,7 +42,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const itemDesc = new Map(items.map((i) => [i.itemNo, i.description]));
 
   const pdf = await buildDailyLogsPdf(
-    { name: project.name, projectNumber: project.projectNumber, customer: project.customer, location: project.location },
+    { name: project.name, projectNumber: project.projectNumber, customer: project.customer, location: project.location, companyName: company?.name ?? "" },
     rows.map((l) => ({
       date: l.date,
       foreman: l.foreman,

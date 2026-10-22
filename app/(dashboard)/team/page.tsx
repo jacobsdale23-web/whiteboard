@@ -1,12 +1,13 @@
 import { db } from "@/lib/db";
-import { profiles } from "@/lib/db/schema";
-import { getSessionAndProfile } from "@/lib/auth/current-user";
+import { profileCompanies, profiles } from "@/lib/db/schema";
+import { getWorkspace } from "@/lib/auth/company";
+import CompanyAccess from "./company-access";
 import RoleToggle from "./role-toggle";
 import MechanicToggle from "./mechanic-toggle";
 import SafetyToggle from "./safety-toggle";
 
 export default async function TeamPage() {
-  const current = await getSessionAndProfile();
+  const current = await getWorkspace();
   if (!current) return null;
 
   if (current.profile.role !== "admin") {
@@ -25,8 +26,19 @@ export default async function TeamPage() {
     );
   }
 
-  const allProfiles = await db.select().from(profiles);
-  const sorted = allProfiles.slice().sort((a, b) => a.name.localeCompare(b.name));
+  const [allProfiles, allMemberships] = await Promise.all([db.select().from(profiles), db.select().from(profileCompanies)]);
+  const membershipsBy = new Map<string, string[]>();
+  for (const m of allMemberships) membershipsBy.set(m.profileId, [...(membershipsBy.get(m.profileId) || []), m.companyId]);
+  // All-company admins see everyone; other admins see their own companies' people
+  // plus anyone who has signed in but hasn't been assigned to a company yet.
+  const mine = new Set(current.companies.map((c) => c.id));
+  const sorted = allProfiles
+    .filter((p) => {
+      if (current.profile.allCompanies || p.allCompanies) return true;
+      const theirs = membershipsBy.get(p.id) || [];
+      return !theirs.length || theirs.some((id) => mine.has(id));
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <section>
@@ -35,7 +47,8 @@ export default async function TeamPage() {
         Admins can see and manage Budget data (pay applications, expenses, invoices) on every project. Members —
         field crew — cannot. Mechanics can see the Equipment tickets page (admins always can). A Safety Coordinator
         gets a view-only account (projects, calendar, daily logs, JSAs, OQ practice) and receives the weekly JSA
-        email. Only people who have
+        email. The company chips decide which companies&apos; White Boards a person can open; new sign-ins see
+        nothing until you tick a company for them. Only people who have
         signed in at least once appear here.
       </p>
       <div style={cardStyle}>
@@ -48,6 +61,13 @@ export default async function TeamPage() {
               <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>{p.email}</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <CompanyAccess
+                userId={p.id}
+                companies={current.companies.map((c) => ({ id: c.id, shortName: c.shortName }))}
+                memberOf={membershipsBy.get(p.id) || []}
+                allCompanies={p.allCompanies}
+                canSetAll={current.profile.allCompanies}
+              />
               <MechanicToggle userId={p.id} isMechanic={p.isMechanic} />
               {p.role !== "admin" && <SafetyToggle userId={p.id} isSafety={p.isSafety} />}
               <RoleToggle userId={p.id} role={p.role} isSelf={p.id === current.profile.id} />

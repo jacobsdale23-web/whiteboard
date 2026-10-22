@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getSessionAndProfile } from "@/lib/auth/current-user";
+import { getWorkspace } from "@/lib/auth/company";
 import { loadEquipmentHistory, formatDowntime } from "@/lib/equipment-history";
 
 const URGENCY_LABEL: Record<string, string> = { down: "Down", repair_soon: "Repair soon", minor: "Minor" };
@@ -11,8 +11,8 @@ function when(d: Date | null): string {
 }
 
 export default async function EquipmentHistoryPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string }> }) {
-  const current = await getSessionAndProfile();
-  if (!current) return null;
+  const current = await getWorkspace();
+  if (!current?.active) return null;
   if (current.profile.role !== "admin") {
     return (
       <section>
@@ -23,7 +23,7 @@ export default async function EquipmentHistoryPage({ searchParams }: { searchPar
   }
 
   const { q = "", status = "" } = await searchParams;
-  const all = await loadEquipmentHistory();
+  const all = await loadEquipmentHistory(current.active.id);
   const needle = q.trim().toLowerCase();
   const rows = all.filter(
     (r) =>

@@ -8,9 +8,11 @@ import { jsaForms } from "@/lib/db/schema";
 import { HAZARD_LIBRARY } from "@/lib/jsa-library";
 import { rememberNames, recordCrewUse } from "@/lib/people";
 import { assertNotSafety } from "@/lib/auth/current-user";
+import { requireProject } from "@/lib/auth/company";
 
 export async function addJsa(projectId: string, formData: FormData) {
   await assertNotSafety();
+  const project = await requireProject(projectId);
   const date = String(formData.get("date") || "");
   const foreman = String(formData.get("foreman") || "").trim();
   const additionalHazards = String(formData.get("additionalHazards") || "").trim();
@@ -31,10 +33,10 @@ export async function addJsa(projectId: string, formData: FormData) {
     .filter((h): h is { taskType: string; hazard: string; control: string } => h !== null);
 
   const crewNames = formData.getAll("crewName").map(String).map((n) => n.trim()).filter(Boolean);
-  const resolved = await rememberNames([foreman, ...crewNames]);
+  const resolved = await rememberNames(project.companyId, [foreman, ...crewNames]);
   const foremanName = resolved.get(foreman) || foreman;
   const crew = crewNames.map((name) => ({ name: resolved.get(name) || name, acknowledgedAt: null as string | null }));
-  await recordCrewUse(foremanName, crew.map((c) => c.name), date);
+  await recordCrewUse(project.companyId, foremanName, crew.map((c) => c.name), date);
 
   await db.insert(jsaForms).values({
     id: randomUUID(),

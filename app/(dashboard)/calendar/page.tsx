@@ -1,15 +1,18 @@
 import { db } from "@/lib/db";
 import { opportunities, projects } from "@/lib/db/schema";
-import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
+import { eq } from "drizzle-orm";
+import { isSafetyViewer } from "@/lib/auth/current-user";
+import { getWorkspace, requireCompany } from "@/lib/auth/company";
 import CalendarView from "./calendar-view";
 
 export default async function CalendarPage() {
-  const current = await getSessionAndProfile();
-  const readOnly = !!current && isSafetyViewer(current.profile);
+  const ws = await getWorkspace();
+  const company = await requireCompany();
+  const readOnly = !!ws && isSafetyViewer(ws.profile);
   const [allProjects, allOpportunities] = await Promise.all([
-    db.select().from(projects),
+    db.select().from(projects).where(eq(projects.companyId, company.id)),
     // Bids and meetings are estimating data; a safety coordinator doesn't see them.
-    readOnly ? Promise.resolve([]) : db.select().from(opportunities),
+    readOnly ? Promise.resolve([]) : db.select().from(opportunities).where(eq(opportunities.companyId, company.id)),
   ]);
 
   const events = allOpportunities

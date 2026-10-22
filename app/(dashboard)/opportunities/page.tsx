@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
+import { eq } from "drizzle-orm";
+import { isSafetyViewer } from "@/lib/auth/current-user";
+import { getWorkspace, requireCompany } from "@/lib/auth/company";
 import { db } from "@/lib/db";
 import { opportunities } from "@/lib/db/schema";
 import OpportunityFormModal from "./opportunity-form-modal";
@@ -16,9 +18,10 @@ function byBidDueDate(a: OpportunityRow, b: OpportunityRow) {
 }
 
 export default async function OpportunitiesPage() {
-  const current = await getSessionAndProfile();
-  if (current && isSafetyViewer(current.profile)) redirect("/board");
-  const rows = await db.select().from(opportunities);
+  const ws = await getWorkspace();
+  if (ws && isSafetyViewer(ws.profile)) redirect("/board");
+  const company = await requireCompany();
+  const rows = await db.select().from(opportunities).where(eq(opportunities.companyId, company.id));
   const active = rows.filter((o) => o.bidStatus !== "Lost" && o.bidStatus !== "Abandoned").sort(byBidDueDate);
   const archived = rows.filter((o) => o.bidStatus === "Lost" || o.bidStatus === "Abandoned").sort(byBidDueDate);
 
