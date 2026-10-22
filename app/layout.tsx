@@ -1,9 +1,18 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "White Board",
   description: "Feliciana Welders project scheduling",
+  // "Add to Home Screen" on iPhone / iPad opens it full screen like an app.
+  appleWebApp: { capable: true, title: "White Board", statusBarStyle: "default" },
+  icons: { apple: "/pwa-icon/apple" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0c2140",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
