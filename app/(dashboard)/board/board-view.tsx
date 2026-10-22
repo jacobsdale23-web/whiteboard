@@ -43,12 +43,14 @@ export default function BoardView({
   completed,
   foremen,
   atShop,
+  readOnly = false,
 }: {
   active: BoardProject[];
   upcoming: BoardProject[];
   completed: CompletedProject[];
   foremen: CrewMember[];
   atShop: CrewMember[];
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const [q, setQ] = useState("");
@@ -97,7 +99,7 @@ export default function BoardView({
             </button>
           )}
         </div>
-        <ProjectFormModal crewList={foremen} />
+        {!readOnly && <ProjectFormModal crewList={foremen} />}
       </div>
 
       {searching && (
@@ -121,12 +123,14 @@ export default function BoardView({
                   </h3>
                   <div style={{ color: "var(--muted)", fontSize: "0.85rem" }}>{p.location}</div>
                   <div style={{ marginTop: 8, fontSize: "0.85rem" }}>Completion: {p.endDate || "—"}</div>
-                  <div style={{ fontSize: "0.85rem" }}>Value: {p.value ? `$${Number(p.value).toLocaleString()}` : "—"}</div>
+                  {!readOnly && <div style={{ fontSize: "0.85rem" }}>Value: {p.value ? `$${Number(p.value).toLocaleString()}` : "—"}</div>}
                   <div style={{ fontSize: "0.85rem" }}>Crew: {(p.crew || []).join(", ") || "Unassigned"}</div>
                 </Link>
-                <div style={{ position: "absolute", top: 14, right: 14 }}>
-                  <ProjectFormModal project={p} crewList={foremen} />
-                </div>
+                {!readOnly && (
+                  <div style={{ position: "absolute", top: 14, right: 14 }}>
+                    <ProjectFormModal project={p} crewList={foremen} />
+                  </div>
+                )}
               </div>
             ))}
             {!active.length && <p style={{ color: "var(--muted)" }}>No active projects yet.</p>}
@@ -146,11 +150,13 @@ export default function BoardView({
                   <h3 style={{ fontSize: "1rem", paddingRight: 24 }}>{p.name}</h3>
                   <div style={{ color: "var(--muted)", fontSize: "0.85rem" }}>{p.location}</div>
                   <div style={{ marginTop: 8, fontSize: "0.85rem" }}>Start: {p.startDate || "TBD"}</div>
-                  <div style={{ fontSize: "0.85rem" }}>Value: {p.value ? `$${Number(p.value).toLocaleString()}` : "—"}</div>
+                  {!readOnly && <div style={{ fontSize: "0.85rem" }}>Value: {p.value ? `$${Number(p.value).toLocaleString()}` : "—"}</div>}
                 </Link>
-                <div style={{ position: "absolute", top: 14, right: 14 }}>
-                  <ProjectFormModal project={p} crewList={foremen} />
-                </div>
+                {!readOnly && (
+                  <div style={{ position: "absolute", top: 14, right: 14 }}>
+                    <ProjectFormModal project={p} crewList={foremen} />
+                  </div>
+                )}
               </div>
             ))}
             {!upcoming.length && <p style={{ color: "var(--muted)" }}>Nothing upcoming yet.</p>}

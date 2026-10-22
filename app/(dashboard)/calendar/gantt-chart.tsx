@@ -269,10 +269,12 @@ export default function GanttChart({ projects }: { projects: GanttProject[] }) {
             <div style={{ color: "#b7bec4", fontSize: "0.75rem", marginBottom: 8 }}>{tooltip.project.location}</div>
           )}
           <TooltipRow label="Completion" value={tooltip.project.endDate || "TBD"} />
-          <TooltipRow
-            label="Value"
-            value={tooltip.project.value ? `$${Number(tooltip.project.value).toLocaleString()}` : "—"}
-          />
+          {tooltip.project.value !== null && (
+            <TooltipRow
+              label="Value"
+              value={tooltip.project.value ? `$${Number(tooltip.project.value).toLocaleString()}` : "—"}
+            />
+          )}
           <TooltipRow
             label="Crew"
             value={tooltip.project.crew?.length ? tooltip.project.crew.join(", ") : "Unassigned"}

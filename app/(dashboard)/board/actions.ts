@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { projects } from "@/lib/db/schema";
 import { computeNextProjectNumber } from "@/lib/project-numbers";
+import { assertNotSafety } from "@/lib/auth/current-user";
 
 export type ProjectInput = {
   name: string;
@@ -22,6 +23,7 @@ export type ProjectInput = {
 };
 
 export async function saveProject(id: string | null, data: ProjectInput) {
+  await assertNotSafety();
   if (!data.name.trim()) throw new Error("Project name is required.");
 
   const existing = id ? await db.query.projects.findFirst({ where: eq(projects.id, id) }) : null;
@@ -63,6 +65,7 @@ export async function saveProject(id: string | null, data: ProjectInput) {
 }
 
 export async function deleteProject(id: string) {
+  await assertNotSafety();
   await db.delete(projects).where(eq(projects.id, id));
   revalidatePath("/board");
   revalidatePath("/calendar");

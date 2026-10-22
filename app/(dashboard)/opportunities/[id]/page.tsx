@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { opportunities, bidItems, estimateDetails, planFiles, planReviews } from "@/lib/db/schema";
-import { getSessionAndProfile } from "@/lib/auth/current-user";
+import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
 import { computeEstimateSummary } from "@/lib/estimate";
 import { isSimilarText } from "@/lib/similar-bids";
 import EstimateSection from "./estimate-section";
@@ -13,6 +13,9 @@ import SimilarBidsSection from "./similar-bids-section";
 
 export default async function OpportunityDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+
+  const viewer = await getSessionAndProfile();
+  if (viewer && isSafetyViewer(viewer.profile)) redirect("/board");
 
   const opportunity = await db.query.opportunities.findFirst({ where: eq(opportunities.id, id) });
   if (!opportunity) notFound();

@@ -60,9 +60,11 @@ export default function CompletedList({ projects }: { projects: Project[] }) {
               </div>
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: "0.8rem" }}>Completed: {p.endDate || "—"}</div>
-                <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
-                  {p.value ? `$${Number(p.value).toLocaleString()}` : "—"}
-                </div>
+                {p.value !== null && (
+                  <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
+                    {p.value ? `$${Number(p.value).toLocaleString()}` : "—"}
+                  </div>
+                )}
               </div>
             </Link>
           ))

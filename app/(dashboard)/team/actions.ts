@@ -23,6 +23,16 @@ export async function setMechanic(userId: string, isMechanic: boolean) {
   revalidatePath("/equipment");
 }
 
+// A safety coordinator account is view-only (projects, calendar, logs, JSAs,
+// OQ practice) and receives the weekly JSA email. Admins can't be marked.
+export async function setSafety(userId: string, isSafety: boolean) {
+  await requireAdmin();
+  const target = await db.query.profiles.findFirst({ where: eq(profiles.id, userId) });
+  if (target?.role === "admin") throw new Error("Admins can't be set as a safety coordinator.");
+  await db.update(profiles).set({ isSafety }).where(eq(profiles.id, userId));
+  revalidatePath("/team");
+}
+
 export async function setRole(userId: string, role: "admin" | "member") {
   const current = await requireAdmin();
   if (current.profile.id === userId && role !== "admin") {

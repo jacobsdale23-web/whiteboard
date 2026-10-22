@@ -6,11 +6,12 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { milestones, dailyLogs, leakNumbers, billingTasks } from "@/lib/db/schema";
 import { rememberNames, recordCrewUse } from "@/lib/people";
-import { getSessionAndProfile } from "@/lib/auth/current-user";
+import { getSessionAndProfile, isSafetyViewer, assertNotSafety } from "@/lib/auth/current-user";
 
 // ---------- schedule (milestones) ----------
 
 export async function addMilestone(projectId: string, formData: FormData) {
+  await assertNotSafety();
   const name = String(formData.get("name") || "").trim();
   if (!name) return;
   const date = String(formData.get("date") || "") || null;
@@ -19,11 +20,13 @@ export async function addMilestone(projectId: string, formData: FormData) {
 }
 
 export async function toggleMilestone(projectId: string, id: string, done: boolean) {
+  await assertNotSafety();
   await db.update(milestones).set({ done }).where(eq(milestones.id, id));
   revalidatePath(`/projects/${projectId}`);
 }
 
 export async function deleteMilestone(projectId: string, id: string) {
+  await assertNotSafety();
   await db.delete(milestones).where(eq(milestones.id, id));
   revalidatePath(`/projects/${projectId}`);
 }
@@ -77,6 +80,7 @@ async function prepareLog(projectId: string, formData: FormData) {
 }
 
 export async function addLog(projectId: string, formData: FormData) {
+  await assertNotSafety();
   const values = await prepareLog(projectId, formData);
   if (!values) return;
   await recordCrewUse(values.foreman, values.crew.map((c) => c.name), values.date);
@@ -90,6 +94,7 @@ export async function addLog(projectId: string, formData: FormData) {
 export async function updateLog(projectId: string, logId: string, formData: FormData): Promise<{ error?: string }> {
   const current = await getSessionAndProfile();
   if (!current) return { error: "Please sign in again." };
+  if (isSafetyViewer(current.profile)) return { error: "This account is view-only." };
   const existing = await db.query.dailyLogs.findFirst({ where: and(eq(dailyLogs.id, logId), eq(dailyLogs.projectId, projectId)) });
   if (!existing) return { error: "That log no longer exists." };
 
@@ -105,6 +110,7 @@ export async function updateLog(projectId: string, logId: string, formData: Form
 }
 
 export async function deleteLog(projectId: string, id: string) {
+  await assertNotSafety();
   await db.delete(dailyLogs).where(eq(dailyLogs.id, id));
   revalidatePath(`/projects/${projectId}`);
 }

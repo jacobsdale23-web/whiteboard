@@ -7,8 +7,10 @@ import { db } from "@/lib/db";
 import { jsaForms } from "@/lib/db/schema";
 import { HAZARD_LIBRARY } from "@/lib/jsa-library";
 import { rememberNames, recordCrewUse } from "@/lib/people";
+import { assertNotSafety } from "@/lib/auth/current-user";
 
 export async function addJsa(projectId: string, formData: FormData) {
+  await assertNotSafety();
   const date = String(formData.get("date") || "");
   const foreman = String(formData.get("foreman") || "").trim();
   const additionalHazards = String(formData.get("additionalHazards") || "").trim();
@@ -51,6 +53,7 @@ export async function addJsa(projectId: string, formData: FormData) {
 }
 
 export async function deleteJsa(projectId: string, id: string) {
+  await assertNotSafety();
   await db.delete(jsaForms).where(eq(jsaForms.id, id));
   revalidatePath(`/projects/${projectId}`);
 }
@@ -59,6 +62,7 @@ export async function deleteJsa(projectId: string, id: string) {
 // everyone to initial, so any crew member on the shared device can tap
 // their own name.
 export async function acknowledgeJsa(projectId: string, jsaId: string, crewIndex: number) {
+  await assertNotSafety();
   const [jsa] = await db.select().from(jsaForms).where(eq(jsaForms.id, jsaId));
   if (!jsa) return;
   const crew = (jsa.crew || []).map((c, i) => (i === crewIndex ? { ...c, acknowledgedAt: new Date().toISOString() } : c));

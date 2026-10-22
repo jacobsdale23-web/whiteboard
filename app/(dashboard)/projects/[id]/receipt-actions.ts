@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { projects, lineItems, receipts } from "@/lib/db/schema";
-import { getSessionAndProfile } from "@/lib/auth/current-user";
+import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
 import { deleteObject, getDownloadUrl, getObjectBuffer, getUploadUrl } from "@/lib/storage/s3";
 import { scanReceiptImage } from "@/lib/receipt-scan";
 import { TM_RECEIPT_CATEGORIES } from "@/lib/receipt-categories";
@@ -22,6 +22,7 @@ const TYPES: Record<string, "image/jpeg" | "image/png" | "image/webp"> = {
 // open the photos or delete receipts, from the Budget section.
 async function requireUser() {
   const current = await getSessionAndProfile();
+  if (current && isSafetyViewer(current.profile)) return null;
   return current;
 }
 

@@ -1,8 +1,8 @@
-import { and, gte, lte } from "drizzle-orm";
+import { and, eq, gte, lte } from "drizzle-orm";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import nodemailer from "nodemailer";
 import { db } from "@/lib/db";
-import { jsaForms, projects } from "@/lib/db/schema";
+import { jsaForms, profiles, projects } from "@/lib/db/schema";
 import { Writer, PAGE_W, MARGIN } from "@/lib/pdf-writer";
 
 type Jsa = typeof jsaForms.$inferSelect;
@@ -101,8 +101,15 @@ export async function buildWeeklyJsaReport(end: string): Promise<WeeklyReport> {
 export async function emailWeeklyJsaReport(report: WeeklyReport): Promise<{ to: string[] }> {
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASSWORD;
-  const to = (process.env.JSA_REPORT_TO || "").split(",").map((s) => s.trim()).filter(Boolean);
-  if (!user || !pass || !to.length) throw new Error("SMTP_USER, SMTP_PASSWORD and JSA_REPORT_TO must all be set.");
+  // JSA_REPORT_TO overrides (handy for sending to yourself first); otherwise the
+  // report goes to everyone marked Safety Coordinator on the Team page.
+  let to = (process.env.JSA_REPORT_TO || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (!to.length) {
+    const safety = await db.select({ email: profiles.email }).from(profiles).where(eq(profiles.isSafety, true));
+    to = safety.map((p) => p.email).filter(Boolean);
+  }
+  if (!user || !pass) throw new Error("SMTP_USER and SMTP_PASSWORD must be set.");
+  if (!to.length) throw new Error("No recipient: mark a Safety Coordinator on the Team page, or set JSA_REPORT_TO.");
 
   // Defaults are Microsoft 365 / Outlook; override SMTP_HOST / SMTP_PORT for another provider.
   const port = Number(process.env.SMTP_PORT || 587);

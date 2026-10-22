@@ -1,8 +1,11 @@
 import { db } from "@/lib/db";
 import { projects, crew } from "@/lib/db/schema";
+import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
 import BoardView from "./board-view";
 
 export default async function BoardPage() {
+  const current = await getSessionAndProfile();
+  const readOnly = !!current && isSafetyViewer(current.profile);
   const allProjects = await db.select().from(projects);
   const allCrew = await db.select().from(crew);
 
@@ -14,7 +17,7 @@ export default async function BoardPage() {
     startDate: p.startDate,
     endDate: p.endDate,
     duration: p.duration,
-    value: p.value,
+    value: readOnly ? null : p.value,
     crew: p.crew,
     billingType: p.billingType,
     projectNumber: p.projectNumber,
@@ -40,6 +43,7 @@ export default async function BoardPage() {
       completed={completed}
       foremen={foremen.map((c) => ({ id: c.id, name: c.name }))}
       atShop={atShop.map((c) => ({ id: c.id, name: c.name }))}
+      readOnly={readOnly}
     />
   );
 }

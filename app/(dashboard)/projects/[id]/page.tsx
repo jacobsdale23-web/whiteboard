@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { projects, milestones, dailyLogs, lineItems, expenses, invoices, payApps, sovItems, sovEntries, billingRates, billingTasks, tmInvoices, jsaForms, leakNumbers, receipts } from "@/lib/db/schema";
-import { getSessionAndProfile } from "@/lib/auth/current-user";
+import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
 import MilestoneSection from "./milestone-section";
 import LogSection from "./log-section";
 import BudgetSection from "./budget-section";
@@ -21,6 +21,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   const current = await getSessionAndProfile();
   const isAdmin = current?.profile.role === "admin";
+  // Safety coordinator: schedule, JSAs and daily logs only, read-only.
+  const readOnly = !!current && isSafetyViewer(current.profile);
   const people = await getPeople();
   const isTm = project.billingType === "tm";
 
@@ -117,12 +119,12 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           <Fact label="Start Date" value={project.startDate || "—"} />
           <Fact label="Completion Date" value={project.endDate || "—"} />
           <Fact label="Duration" value={project.duration || "—"} />
-          <Fact label="Project Value" value={project.value ? `$${Number(project.value).toLocaleString()}` : "—"} />
+          {!readOnly && <Fact label="Project Value" value={project.value ? `$${Number(project.value).toLocaleString()}` : "—"} />}
           <Fact label="Crew" value={project.crew?.length ? project.crew.join(", ") : "Unassigned"} />
         </div>
       </div>
 
-      <div style={{ marginBottom: 20 }}>
+      {!readOnly && <div style={{ marginBottom: 20 }}>
         {isAdmin && budgetData ? (
           <BudgetSection
             projectId={id}
@@ -150,7 +152,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>🔒 Budget is visible to admins only.</p>
           </div>
         )}
-      </div>
+      </div>}
 
       {isAdmin && isTm && billingData && (
         <div style={{ marginBottom: 20 }}>
@@ -164,20 +166,24 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       )}
 
       <div style={{ marginBottom: 20 }}>
-        <MilestoneSection projectId={id} milestones={projectMilestones} />
+        <MilestoneSection projectId={id} milestones={projectMilestones} readOnly={readOnly} />
       </div>
 
       <div style={{ marginBottom: 20 }}>
-        <JsaSection projectId={id} jsas={projectJsas} people={people.names} usualCrews={people.usualCrews} />
+        <JsaSection projectId={id} jsas={projectJsas} people={people.names} usualCrews={people.usualCrews} readOnly={readOnly} />
       </div>
 
-      <div style={{ marginBottom: 20 }}>
-        <ReceiptSection projectId={id} billingType={project.billingType} lineItems={projectLineItems.map((li) => ({ itemNo: li.itemNo, description: li.description }))} />
-      </div>
+      {!readOnly && (
+        <>
+          <div style={{ marginBottom: 20 }}>
+            <ReceiptSection projectId={id} billingType={project.billingType} lineItems={projectLineItems.map((li) => ({ itemNo: li.itemNo, description: li.description }))} />
+          </div>
 
-      <div style={{ marginBottom: 20 }}>
-        <EquipmentSection projectId={id} />
-      </div>
+          <div style={{ marginBottom: 20 }}>
+            <EquipmentSection projectId={id} />
+          </div>
+        </>
+      )}
 
       <LogSection
         projectId={id}
@@ -190,6 +196,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         people={people.names}
         usualCrews={people.usualCrews}
         isAdmin={isAdmin}
+        readOnly={readOnly}
       />
     </div>
   );

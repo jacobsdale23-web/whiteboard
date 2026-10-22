@@ -335,6 +335,7 @@ export default function LogSection({
   people,
   usualCrews,
   isAdmin,
+  readOnly = false,
 }: {
   projectId: string;
   logs: LogEntry[];
@@ -344,6 +345,7 @@ export default function LogSection({
   people: string[];
   usualCrews: Record<string, string[]>;
   isAdmin: boolean;
+  readOnly?: boolean;
 }) {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -362,12 +364,14 @@ export default function LogSection({
     <div style={cardStyle}>
       <div style={headStyle}>
         <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase" }}>Daily Logs</h3>
-        <button onClick={() => setShowForm((s) => !s)} style={addBtnStyle}>
-          + Add Entry
-        </button>
+        {!readOnly && (
+          <button onClick={() => setShowForm((s) => !s)} style={addBtnStyle}>
+            + Add Entry
+          </button>
+        )}
       </div>
 
-      {showForm && <LogForm {...formProps} onDone={() => setShowForm(false)} />}
+      {showForm && !readOnly && <LogForm {...formProps} onDone={() => setShowForm(false)} />}
 
       {isAdmin && sorted.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", background: "var(--surface-2)", borderRadius: 8, padding: "10px 12px", marginBottom: 10, fontSize: "0.8rem" }}>
@@ -395,7 +399,7 @@ export default function LogSection({
 
       {sorted.length ? (
         sorted.map((l) => {
-          if (editingId === l.id) {
+          if (editingId === l.id && !readOnly) {
             return <LogForm key={l.id} {...formProps} initial={l} onDone={() => setEditingId(null)} />;
           }
           const li = l.lineItem ? lineItems.find((x) => x.itemNo === l.lineItem) : null;
@@ -434,18 +438,22 @@ export default function LogSection({
                     PDF
                   </button>
                 )}
-                <button onClick={() => setEditingId(l.id)} style={deleteBtnStyle} title="Edit this log">
-                  ✎
-                </button>
-                <button
-                  onClick={() => {
-                    if (confirm("Delete this log entry?")) startTransition(() => deleteLog(projectId, l.id));
-                  }}
-                  style={deleteBtnStyle}
-                  title="Delete"
-                >
-                  🗑
-                </button>
+                {!readOnly && (
+                  <>
+                    <button onClick={() => setEditingId(l.id)} style={deleteBtnStyle} title="Edit this log">
+                      ✎
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm("Delete this log entry?")) startTransition(() => deleteLog(projectId, l.id));
+                      }}
+                      style={deleteBtnStyle}
+                      title="Delete"
+                    >
+                      🗑
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           );

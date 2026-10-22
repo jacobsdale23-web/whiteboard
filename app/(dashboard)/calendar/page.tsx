@@ -1,11 +1,15 @@
 import { db } from "@/lib/db";
 import { opportunities, projects } from "@/lib/db/schema";
+import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
 import CalendarView from "./calendar-view";
 
 export default async function CalendarPage() {
+  const current = await getSessionAndProfile();
+  const readOnly = !!current && isSafetyViewer(current.profile);
   const [allProjects, allOpportunities] = await Promise.all([
     db.select().from(projects),
-    db.select().from(opportunities),
+    // Bids and meetings are estimating data; a safety coordinator doesn't see them.
+    readOnly ? Promise.resolve([]) : db.select().from(opportunities),
   ]);
 
   const events = allOpportunities
@@ -33,7 +37,7 @@ export default async function CalendarPage() {
           startDate: p.startDate,
           endDate: p.endDate,
           duration: p.duration,
-          value: p.value,
+          value: readOnly ? null : p.value,
           crew: p.crew,
         }))}
       />

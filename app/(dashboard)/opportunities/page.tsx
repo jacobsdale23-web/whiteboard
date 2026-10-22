@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
 import { opportunities } from "@/lib/db/schema";
 import OpportunityFormModal from "./opportunity-form-modal";
@@ -14,6 +16,8 @@ function byBidDueDate(a: OpportunityRow, b: OpportunityRow) {
 }
 
 export default async function OpportunitiesPage() {
+  const current = await getSessionAndProfile();
+  if (current && isSafetyViewer(current.profile)) redirect("/board");
   const rows = await db.select().from(opportunities);
   const active = rows.filter((o) => o.bidStatus !== "Lost" && o.bidStatus !== "Abandoned").sort(byBidDueDate);
   const archived = rows.filter((o) => o.bidStatus === "Lost" || o.bidStatus === "Abandoned").sort(byBidDueDate);

@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { equipmentTickets } from "@/lib/db/schema";
-import { getSessionAndProfile } from "@/lib/auth/current-user";
+import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
 
 const URGENCIES = ["down", "repair_soon", "minor"];
 
@@ -13,6 +13,7 @@ const URGENCIES = ["down", "repair_soon", "minor"];
 export async function addEquipmentTicket(projectId: string, formData: FormData): Promise<{ error?: string }> {
   const current = await getSessionAndProfile();
   if (!current) return { error: "Please sign in again." };
+  if (isSafetyViewer(current.profile)) return { error: "This account is view-only." };
 
   const reportedBy = String(formData.get("reportedBy") || "").trim();
   const equipment = String(formData.get("equipment") || "").trim();

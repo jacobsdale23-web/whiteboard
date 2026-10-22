@@ -12,6 +12,22 @@ export const getSessionAndProfile = cache(async () => {
 });
 
 // Who may read equipment tickets. Always re-check this on the server.
-export function canSeeEquipment(profile: { role: string; isMechanic: boolean }): boolean {
-  return profile.role === "admin" || profile.isMechanic;
+export function canSeeEquipment(profile: { role: string; isMechanic: boolean; isSafety: boolean }): boolean {
+  return profile.role === "admin" || (profile.isMechanic && !profile.isSafety);
+}
+
+// A safety coordinator account is view-only: it sees projects, the calendar,
+// daily logs, JSAs and OQ practice tests, and nothing else. Admins are never
+// restricted, even if the flag is somehow set on them.
+export function isSafetyViewer(profile: { role: string; isSafety: boolean }): boolean {
+  return profile.role !== "admin" && profile.isSafety;
+}
+
+// Guard for server actions that change data: a safety coordinator account
+// must not be able to trigger them, regardless of what the UI shows.
+export async function assertNotSafety(): Promise<void> {
+  const current = await getSessionAndProfile();
+  if (current && isSafetyViewer(current.profile)) {
+    throw new Error("This account is view-only.");
+  }
 }

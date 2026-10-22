@@ -27,11 +27,13 @@ export default function JsaSection({
   jsas,
   people,
   usualCrews,
+  readOnly = false,
 }: {
   projectId: string;
   jsas: Jsa[];
   people: string[];
   usualCrews: Record<string, string[]>;
+  readOnly?: boolean;
 }) {
   const [showForm, setShowForm] = useState(false);
   const [selectedTaskTypes, setSelectedTaskTypes] = useState<string[]>([]);
@@ -99,12 +101,14 @@ export default function JsaSection({
           <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase" }}>Daily JSA</h3>
           <p style={{ fontSize: "0.76rem", color: "var(--muted)", marginTop: 2 }}>Job Safety Analysis — complete before work starts</p>
         </div>
-        <button onClick={() => setShowForm((s) => !s)} style={addBtnStyle}>
-          + New JSA
-        </button>
+        {!readOnly && (
+          <button onClick={() => setShowForm((s) => !s)} style={addBtnStyle}>
+            + New JSA
+          </button>
+        )}
       </div>
 
-      {showForm && (
+      {showForm && !readOnly && (
         <form
           action={async (fd) => {
             await addJsa(projectId, fd);
@@ -269,7 +273,7 @@ export default function JsaSection({
       )}
 
       {sorted.length ? (
-        sorted.map((j) => <JsaCard key={j.id} projectId={projectId} jsa={j} />)
+        sorted.map((j) => <JsaCard key={j.id} projectId={projectId} jsa={j} readOnly={readOnly} />)
       ) : (
         <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>No JSAs submitted yet.</p>
       )}
@@ -277,7 +281,7 @@ export default function JsaSection({
   );
 }
 
-function JsaCard({ projectId, jsa }: { projectId: string; jsa: Jsa }) {
+function JsaCard({ projectId, jsa, readOnly }: { projectId: string; jsa: Jsa; readOnly: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [, startTransition] = useTransition();
   const crew = jsa.crew || [];
@@ -304,14 +308,16 @@ function JsaCard({ projectId, jsa }: { projectId: string; jsa: Jsa }) {
           <button onClick={() => setExpanded((s) => !s)} style={addBtnStyle}>
             {expanded ? "Hide" : "View"}
           </button>
-          <button
-            onClick={() => {
-              if (confirm("Delete this JSA?")) startTransition(() => deleteJsa(projectId, jsa.id));
-            }}
-            style={deleteBtnStyle}
-          >
-            🗑
-          </button>
+          {!readOnly && (
+            <button
+              onClick={() => {
+                if (confirm("Delete this JSA?")) startTransition(() => deleteJsa(projectId, jsa.id));
+              }}
+              style={deleteBtnStyle}
+            >
+              🗑
+            </button>
+          )}
         </div>
       </div>
 
@@ -364,17 +370,17 @@ function JsaCard({ projectId, jsa }: { projectId: string; jsa: Jsa }) {
                 {crew.map((c, i) => (
                   <button
                     key={i}
-                    disabled={!!c.acknowledgedAt}
+                    disabled={!!c.acknowledgedAt || readOnly}
                     onClick={() => startTransition(() => acknowledgeJsa(projectId, jsa.id, i))}
                     style={{
                       ...chipStyle,
                       border: "1px solid var(--border)",
-                      cursor: c.acknowledgedAt ? "default" : "pointer",
+                      cursor: c.acknowledgedAt || readOnly ? "default" : "pointer",
                       background: c.acknowledgedAt ? "var(--active-bg, #e8f5e9)" : "var(--surface-2)",
                       color: c.acknowledgedAt ? "var(--active, #2e7d32)" : "var(--ink)",
                     }}
                   >
-                    {c.acknowledgedAt ? `✓ ${c.name}` : `Tap to initial — ${c.name}`}
+                    {c.acknowledgedAt ? `✓ ${c.name}` : readOnly ? `Not initialed — ${c.name}` : `Tap to initial — ${c.name}`}
                   </button>
                 ))}
               </div>

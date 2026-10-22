@@ -3,7 +3,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { projects } from "@/lib/db/schema";
-import { getSessionAndProfile } from "@/lib/auth/current-user";
+import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
 import { improveLogDescription } from "@/lib/improve-text";
 
 const MAX_CHARS = 4000;
@@ -17,6 +17,7 @@ export async function improveDescription(
 ): Promise<{ error?: string; improved?: string }> {
   const current = await getSessionAndProfile();
   if (!current) return { error: "Please sign in again." };
+  if (isSafetyViewer(current.profile)) return { error: "This account is view-only." };
 
   const clean = text.trim();
   if (!clean) return { error: "Write your notes first, then tap Improve." };

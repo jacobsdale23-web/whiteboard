@@ -9,6 +9,9 @@ export const profiles = pgTable("profiles", {
   role: text("role").notNull().default("member"), // "admin" | "member"
   // Mechanics (and admins) can see the Equipment tickets page; set on the Team page.
   isMechanic: boolean("is_mechanic").notNull().default(false),
+  // Safety coordinators get a view-only account limited to projects, the
+  // calendar, daily logs, JSAs and OQ practice tests (non-admins only).
+  isSafety: boolean("is_safety").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

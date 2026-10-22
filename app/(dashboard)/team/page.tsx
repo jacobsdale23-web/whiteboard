@@ -3,6 +3,7 @@ import { profiles } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
 import RoleToggle from "./role-toggle";
 import MechanicToggle from "./mechanic-toggle";
+import SafetyToggle from "./safety-toggle";
 
 export default async function TeamPage() {
   const current = await getSessionAndProfile();
@@ -32,7 +33,9 @@ export default async function TeamPage() {
       <h2 style={{ marginBottom: 8 }}>Team</h2>
       <p style={{ color: "var(--muted)", fontSize: "0.85rem", marginBottom: 18 }}>
         Admins can see and manage Budget data (pay applications, expenses, invoices) on every project. Members —
-        field crew — cannot. Mechanics can see the Equipment tickets page (admins always can). Only people who have
+        field crew — cannot. Mechanics can see the Equipment tickets page (admins always can). A Safety Coordinator
+        gets a view-only account (projects, calendar, daily logs, JSAs, OQ practice) and receives the weekly JSA
+        email. Only people who have
         signed in at least once appear here.
       </p>
       <div style={cardStyle}>
@@ -46,6 +49,7 @@ export default async function TeamPage() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <MechanicToggle userId={p.id} isMechanic={p.isMechanic} />
+              {p.role !== "admin" && <SafetyToggle userId={p.id} isSafety={p.isSafety} />}
               <RoleToggle userId={p.id} role={p.role} isSelf={p.id === current.profile.id} />
             </div>
           </div>

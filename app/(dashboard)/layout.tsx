@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { equipmentTickets } from "@/lib/db/schema";
-import { getSessionAndProfile, canSeeEquipment } from "@/lib/auth/current-user";
+import { getSessionAndProfile, canSeeEquipment, isSafetyViewer } from "@/lib/auth/current-user";
 import SignOutButton from "./sign-out-button";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +12,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Proxy already guarantees a session reaches here; this is a safety net.
   if (!current) return null;
 
+  const safetyOnly = isSafetyViewer(current.profile);
   const showEquipment = canSeeEquipment(current.profile);
   let openTickets = 0;
   let downTickets = 0;
@@ -39,7 +40,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <div>
             <h1 style={{ fontSize: "1.3rem", textTransform: "uppercase" }}>White Board</h1>
             <p style={{ fontSize: "0.8rem", color: "#b7c0cc" }}>
-              {current.profile.name} · {current.profile.role}
+              {current.profile.name} · {safetyOnly ? "safety (view only)" : current.profile.role}
             </p>
           </div>
           <nav style={{ display: "flex", gap: 4 }}>
@@ -49,9 +50,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <Link href="/calendar" style={navLinkStyle}>
               Calendar
             </Link>
-            <Link href="/opportunities" style={navLinkStyle}>
-              Opportunities
-            </Link>
+            {!safetyOnly && (
+              <Link href="/opportunities" style={navLinkStyle}>
+                Opportunities
+              </Link>
+            )}
             <Link href="/completed" style={navLinkStyle}>
               Completed
             </Link>

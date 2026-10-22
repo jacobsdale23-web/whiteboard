@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { opportunities, projects } from "@/lib/db/schema";
+import { getSessionAndProfile, isSafetyViewer, assertNotSafety } from "@/lib/auth/current-user";
 
 export type OpportunityFormState = { error?: string } | null;
 
@@ -12,6 +13,8 @@ export async function saveOpportunity(
   _prev: OpportunityFormState,
   formData: FormData
 ): Promise<OpportunityFormState> {
+  const viewer = await getSessionAndProfile();
+  if (viewer && isSafetyViewer(viewer.profile)) return { error: "This account is view-only." };
   const id = String(formData.get("id") || "");
   const jobName = String(formData.get("jobName") || "").trim();
   if (!jobName) return { error: "Job name is required." };
@@ -37,6 +40,7 @@ export async function saveOpportunity(
 }
 
 export async function deleteOpportunity(id: string) {
+  await assertNotSafety();
   await db.delete(opportunities).where(eq(opportunities.id, id));
   revalidatePath("/opportunities");
 }
@@ -47,6 +51,8 @@ export async function updateBidStatus(
   _prev: StatusFormState,
   formData: FormData
 ): Promise<StatusFormState> {
+  const viewer = await getSessionAndProfile();
+  if (viewer && isSafetyViewer(viewer.profile)) return { error: "This account is view-only." };
   const id = String(formData.get("id") || "");
   if (!id) return { error: "Missing opportunity id." };
 

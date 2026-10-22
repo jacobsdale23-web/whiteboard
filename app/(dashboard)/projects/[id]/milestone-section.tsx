@@ -5,7 +5,7 @@ import { addMilestone, deleteMilestone, toggleMilestone } from "./actions";
 
 type Milestone = { id: string; name: string; date: string | null; done: boolean };
 
-export default function MilestoneSection({ projectId, milestones }: { projectId: string; milestones: Milestone[] }) {
+export default function MilestoneSection({ projectId, milestones, readOnly = false }: { projectId: string; milestones: Milestone[]; readOnly?: boolean }) {
   const [showForm, setShowForm] = useState(false);
   const [, startTransition] = useTransition();
   const sorted = milestones.slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
@@ -14,12 +14,14 @@ export default function MilestoneSection({ projectId, milestones }: { projectId:
     <div style={cardStyle}>
       <div style={headStyle}>
         <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase" }}>Schedule</h3>
-        <button onClick={() => setShowForm((s) => !s)} style={addBtnStyle}>
-          + Add Milestone
-        </button>
+        {!readOnly && (
+          <button onClick={() => setShowForm((s) => !s)} style={addBtnStyle}>
+            + Add Milestone
+          </button>
+        )}
       </div>
 
-      {showForm && (
+      {showForm && !readOnly && (
         <form
           action={async (fd) => {
             await addMilestone(projectId, fd);
@@ -42,6 +44,7 @@ export default function MilestoneSection({ projectId, milestones }: { projectId:
               <input
                 type="checkbox"
                 defaultChecked={m.done}
+                disabled={readOnly}
                 onChange={(e) => startTransition(() => toggleMilestone(projectId, m.id, e.target.checked))}
                 style={{ marginTop: 3 }}
               />
@@ -52,15 +55,17 @@ export default function MilestoneSection({ projectId, milestones }: { projectId:
                 <div style={{ fontSize: "0.72rem", color: "var(--muted)", fontFamily: "var(--font-mono)" }}>{m.date || "No date"}</div>
               </div>
             </div>
-            <button
-              onClick={() => {
-                if (confirm(`Delete "${m.name}"?`)) startTransition(() => deleteMilestone(projectId, m.id));
-              }}
-              style={deleteBtnStyle}
-              title="Delete"
-            >
-              🗑
-            </button>
+            {!readOnly && (
+              <button
+                onClick={() => {
+                  if (confirm(`Delete "${m.name}"?`)) startTransition(() => deleteMilestone(projectId, m.id));
+                }}
+                style={deleteBtnStyle}
+                title="Delete"
+              >
+                🗑
+              </button>
+            )}
           </div>
         ))
       ) : (
