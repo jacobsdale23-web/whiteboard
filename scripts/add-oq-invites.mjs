@@ -19,6 +19,7 @@ const steps = [
      use_count integer not null default 0,
      sent_at timestamp
    )`,
+  `alter table oq_invites add column if not exists is_group boolean not null default false`,
   `create index if not exists oq_invites_employee on oq_invites (employee_id)`,
 ];
 

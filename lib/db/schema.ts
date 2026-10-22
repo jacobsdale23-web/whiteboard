@@ -539,6 +539,8 @@ export const oqInvites = pgTable("oq_invites", {
   email: text("email"),
   companyId: text("company_id").notNull(),
   employeeId: text("employee_id"),
+  // A shared link for a whole class: one link for many people, no personal greeting.
+  isGroup: boolean("is_group").notNull().default(false),
   createdBy: text("created_by").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   revokedAt: timestamp("revoked_at"),

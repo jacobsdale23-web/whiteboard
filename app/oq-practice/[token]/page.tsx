@@ -31,7 +31,7 @@ export default async function PracticeHome({ params }: { params: Promise<{ token
 
   return (
     <section>
-      <h2 style={{ marginBottom: 6 }}>Hi {inv.name.trim().split(/\s+/)[0]}</h2>
+      <h2 style={{ marginBottom: 6 }}>{inv.isGroup ? "Welcome" : `Hi ${inv.name.trim().split(/\s+/)[0]}`}</h2>
       <p style={{ color: "var(--muted)", fontSize: "0.9rem", marginBottom: 16 }}>
         {company?.name ? `${company.name} practice tests for your Operator Qualification evaluations. ` : ""}Pick a task, then a test. You&apos;ll see whether each answer is right as you go. Bookmark this page to come back.
       </p>

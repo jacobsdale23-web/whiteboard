@@ -19,10 +19,11 @@ export async function findActiveInvite(token: string): Promise<Invite | null> {
   return inv && inviteState(inv) === "active" ? inv : null;
 }
 
-// Count a visit, at most once per 10 minutes per person so reloads don't inflate it.
+// Count a visit. A personal link counts at most once per 10 minutes so reloads
+// don't inflate it; a group link counts every open, since many people share it.
 export async function recordInviteVisit(inv: Invite): Promise<void> {
   const now = new Date();
-  if (inv.lastUsedAt && now.getTime() - inv.lastUsedAt.getTime() < 10 * 60 * 1000) return;
+  if (!inv.isGroup && inv.lastUsedAt && now.getTime() - inv.lastUsedAt.getTime() < 10 * 60 * 1000) return;
   await db.update(oqInvites).set({ lastUsedAt: now, useCount: inv.useCount + 1 }).where(eq(oqInvites.id, inv.id));
 }
 

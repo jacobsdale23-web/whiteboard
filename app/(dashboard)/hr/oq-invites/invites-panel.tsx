@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createInvites, createManualInvite, deleteInvite, resendInvite, restoreInvite, revokeInvite } from "../oq-actions";
+import { createGroupInvite, createInvites, createManualInvite, deleteInvite, resendInvite, restoreInvite, revokeInvite } from "../oq-actions";
 import { btn, card, chip, dangerBtn, grid2, input, label, primaryBtn, td, th } from "../hr-styles";
 
 export type InviteInfo = { id: string; link: string; revoked: boolean; sentAt: string | null; lastUsedAt: string | null; useCount: number };
 export type PersonRow = { id: string; name: string; company: string; position: string | null; email: string | null; invite: InviteInfo | null };
-export type OtherInvite = InviteInfo & { name: string; email: string | null; company: string };
+export type OtherInvite = InviteInfo & { name: string; email: string | null; company: string; isGroup: boolean };
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Chicago" }) : null);
 
@@ -190,17 +190,19 @@ export default function InvitesPanel({
         </table>
       </div>
 
+      <GroupLink companies={companies} defaultCompanyId={defaultCompanyId} busy={busy} run={run} summarize={summarize} />
+
       <AddSomeoneElse companies={companies} defaultCompanyId={defaultCompanyId} emailReady={emailReady} busy={busy} run={run} summarize={summarize} />
 
       {others.length > 0 && (
         <div style={{ ...card, padding: 12, overflowX: "auto" }}>
-          <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase", margin: "6px 6px 10px" }}>Other invites (not on the employee roster)</h3>
+          <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase", margin: "6px 6px 10px" }}>Group links and other invites</h3>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <tbody>
               {others.map((o) => (
                 <tr key={o.id}>
                   <td style={td}>
-                    <strong>{o.name}</strong>
+                    <strong>{o.name}</strong> {o.isGroup && <span style={chip("warn")}>Group link</span>}
                     <div style={{ color: "var(--muted)", fontSize: "0.76rem" }}>
                       {o.company}
                       {o.email ? ` · ${o.email}` : ""}
@@ -225,6 +227,74 @@ export default function InvitesPanel({
         </div>
       )}
     </div>
+  );
+}
+
+// One link for a whole class: hand the same link to everyone in the room.
+function GroupLink({
+  companies,
+  defaultCompanyId,
+  busy,
+  run,
+  summarize,
+}: {
+  companies: { id: string; name: string }[];
+  defaultCompanyId: string;
+  busy: boolean;
+  run: <T>(fn: () => Promise<T>, after?: (r: T) => void) => Promise<void>;
+  summarize: (r: { error?: string; created?: number }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!open)
+    return (
+      <p style={{ margin: "20px 0 10px" }}>
+        <button onClick={() => setOpen(true)} style={primaryBtn}>
+          + Create a group link (one link for a whole class)
+        </button>
+      </p>
+    );
+  return (
+    <form
+      action={(fd) =>
+        run(
+          () => createGroupInvite({ name: String(fd.get("name") || ""), companyId: String(fd.get("companyId") || "") }),
+          (r) => {
+            summarize(r);
+            if (!r.error) setOpen(false);
+          }
+        )
+      }
+      style={{ ...card, marginTop: 20 }}
+    >
+      <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase", marginBottom: 6 }}>Group link</h3>
+      <p style={{ color: "var(--muted)", fontSize: "0.82rem", marginBottom: 12 }}>
+        One link that everyone in the class can use, on their own phones. Anyone who has it can open the practice tests, so revoke it when the session is over. You&apos;ll find it under &ldquo;Group links and other invites&rdquo; below.
+      </p>
+      <div style={grid2}>
+        <div>
+          <label style={label}>Name (for your reference)</label>
+          <input name="name" required placeholder="e.g. Tuesday OQ class" style={input} />
+        </div>
+        <div>
+          <label style={label}>Company</label>
+          <select name="companyId" defaultValue={defaultCompanyId} style={input}>
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+        <button type="submit" disabled={busy} style={primaryBtn}>
+          Create group link
+        </button>
+        <button type="button" onClick={() => setOpen(false)} style={btn}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 

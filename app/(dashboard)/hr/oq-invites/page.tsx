@@ -39,7 +39,7 @@ export default async function OqInvitesPage({ searchParams }: { searchParams: Pr
   const others: OtherInvite[] = invites
     .filter((i) => !i.employeeId)
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-    .map((i) => ({ name: i.name, email: i.email, company: coName.get(i.companyId) ?? i.companyId, ...toInvite(i) }));
+    .map((i) => ({ name: i.name, email: i.email, isGroup: i.isGroup, company: coName.get(i.companyId) ?? i.companyId, ...toInvite(i) }));
 
   return (
     <div>

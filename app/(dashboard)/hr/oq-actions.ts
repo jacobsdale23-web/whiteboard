@@ -126,6 +126,19 @@ export async function createManualInvite(data: { name: string; email: string; co
   return out;
 }
 
+// One shared link for a whole class (say, 20 people testing together). Anyone
+// with it can open the practice tests, so revoke it when the session is over.
+export async function createGroupInvite(data: { name: string; companyId: string }): Promise<Summary> {
+  const current = await requireHR();
+  if (!current) return { error: "Only admins and HR can send invites." };
+  const name = data.name.trim();
+  if (!name) return { error: "Give the group a name, like “Tuesday OQ class”." };
+  if (!data.companyId) return { error: "Pick a company." };
+  await db.insert(oqInvites).values({ id: randomUUID(), token: newInviteToken(), name, companyId: data.companyId, isGroup: true, createdBy: current.profile.name });
+  revalidatePath("/hr/oq-invites");
+  return { created: 1 };
+}
+
 export async function resendInvite(id: string): Promise<{ error?: string }> {
   if (!(await requireHR())) return { error: "Only admins and HR can send invites." };
   if (!smtpConfigured()) return { error: "Email isn't set up yet." };
