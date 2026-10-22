@@ -16,6 +16,13 @@ export function canSeeEquipment(profile: { role: string; isMechanic: boolean; is
   return profile.role === "admin" || (profile.isMechanic && !profile.isSafety);
 }
 
+// Who may open the HR module (candidates, employees, drug & alcohol testing,
+// OQ qualifications): admins and people marked HR on the Team page. A
+// view-only safety account never gets it. Always re-check this on the server.
+export function canSeeHR(profile: { role: string; isHR: boolean; isSafety: boolean }): boolean {
+  return profile.role === "admin" || (profile.isHR && !profile.isSafety);
+}
+
 // A safety coordinator account is view-only: it sees projects, the calendar,
 // daily logs, JSAs and OQ practice tests, and nothing else. Admins are never
 // restricted, even if the flag is somehow set on them.

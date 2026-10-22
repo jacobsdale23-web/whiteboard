@@ -40,7 +40,19 @@ export async function setSafety(userId: string, isSafety: boolean) {
   await requireAdminOver(userId);
   const target = await db.query.profiles.findFirst({ where: eq(profiles.id, userId) });
   if (target?.role === "admin") throw new Error("Admins can't be set as a safety coordinator.");
+  if (isSafety && target?.isHR) throw new Error("Remove their HR access first; a safety coordinator account is view-only.");
   await db.update(profiles).set({ isSafety }).where(eq(profiles.id, userId));
+  revalidatePath("/team");
+}
+
+// HR users (like admins) can open the HR module: candidates, employees, drug &
+// alcohol testing and OQ qualifications. Admins already have it.
+export async function setHR(userId: string, isHR: boolean) {
+  await requireAdminOver(userId);
+  const target = await db.query.profiles.findFirst({ where: eq(profiles.id, userId) });
+  if (target?.role === "admin") throw new Error("Admins already have HR access.");
+  if (isHR && target?.isSafety) throw new Error("A safety coordinator account is view-only and can't have HR access.");
+  await db.update(profiles).set({ isHR }).where(eq(profiles.id, userId));
   revalidatePath("/team");
 }
 

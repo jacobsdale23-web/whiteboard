@@ -5,6 +5,7 @@ import CompanyAccess from "./company-access";
 import RoleToggle from "./role-toggle";
 import MechanicToggle from "./mechanic-toggle";
 import SafetyToggle from "./safety-toggle";
+import HrToggle from "./hr-toggle";
 
 export default async function TeamPage() {
   const current = await getWorkspace();
@@ -47,7 +48,7 @@ export default async function TeamPage() {
         Admins can see and manage Budget data (pay applications, expenses, invoices) on every project. Members —
         field crew — cannot. Mechanics can see the Equipment tickets page (admins always can). A Safety Coordinator
         gets a view-only account (projects, calendar, daily logs, JSAs, OQ practice) and receives the weekly JSA
-        email. The company chips decide which companies&apos; White Boards a person can open; new sign-ins see
+        email. HR users (like admins) can open the confidential HR module. The company chips decide which companies&apos; White Boards a person can open; new sign-ins see
         nothing until you tick a company for them. Only people who have
         signed in at least once appear here.
       </p>
@@ -69,6 +70,7 @@ export default async function TeamPage() {
                 canSetAll={current.profile.allCompanies}
               />
               <MechanicToggle userId={p.id} isMechanic={p.isMechanic} />
+              {p.role !== "admin" && <HrToggle userId={p.id} isHR={p.isHR} />}
               {p.role !== "admin" && <SafetyToggle userId={p.id} isSafety={p.isSafety} />}
               <RoleToggle userId={p.id} role={p.role} isSelf={p.id === current.profile.id} />
             </div>

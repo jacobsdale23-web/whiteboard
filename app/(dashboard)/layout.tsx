@@ -2,7 +2,7 @@ import Link from "next/link";
 import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { equipmentTickets } from "@/lib/db/schema";
-import { canSeeEquipment, isSafetyViewer } from "@/lib/auth/current-user";
+import { canSeeEquipment, canSeeHR, isSafetyViewer } from "@/lib/auth/current-user";
 import { getWorkspace } from "@/lib/auth/company";
 import SignOutButton from "./sign-out-button";
 import CompanySwitcher from "./company-switcher";
@@ -83,6 +83,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <Link href="/oq" style={navLinkStyle}>
               OQ Practice
             </Link>
+            {canSeeHR(current.profile) && (
+              <Link href="/hr" style={navLinkStyle}>
+                HR
+              </Link>
+            )}
             {showEquipment && (
               <Link href="/equipment" style={navLinkStyle}>
                 Equipment

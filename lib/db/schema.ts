@@ -34,6 +34,9 @@ export const profiles = pgTable("profiles", {
   isSafety: boolean("is_safety").notNull().default(false),
   // Works across every company (and any added later) without per-company rows.
   allCompanies: boolean("all_companies").notNull().default(false),
+  // HR users (like admins) can open the HR module: candidates, employees,
+  // drug & alcohol testing and OQ qualifications. Non-admins only.
+  isHR: boolean("is_hr").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -449,5 +452,74 @@ export const planReviews = pgTable("plan_reviews", {
   findings: jsonb("findings")
     .$type<{ severity: "high" | "medium" | "low"; category: string; title: string; description: string; suggestedBidCategory: string | null }[]>()
     .default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ---------- HR (admins and HR users only; one combined list across companies) ----------
+
+export const hrEmployees = pgTable("hr_employees", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id").notNull(),
+  name: text("name").notNull(),
+  position: text("position"),
+  phone: text("phone"),
+  email: text("email"),
+  hireDate: text("hire_date"),
+  status: text("status").notNull().default("active"), // active | leave | terminated
+  terminatedDate: text("terminated_date"),
+  // Enrollment in the drug & alcohol testing (random pool) program.
+  daProgram: text("da_program").notNull().default("pending"), // pending | active | inactive
+  daEnrolledDate: text("da_enrolled_date"),
+  notes: text("notes"),
+  candidateId: text("candidate_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const hrCandidates = pgTable("hr_candidates", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id").notNull(),
+  name: text("name").notNull(),
+  phone: text("phone"),
+  email: text("email"),
+  position: text("position"),
+  source: text("source"),
+  stage: text("stage").notNull().default("applied"),
+  appliedDate: text("applied_date"),
+  notes: text("notes"),
+  employeeId: text("employee_id"), // set once hired
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// One row per test, for a candidate (pre-employment) or an employee. Status and
+// dates only; the result document, if any, lives in object storage.
+export const hrDrugTests = pgTable("hr_drug_tests", {
+  id: text("id").primaryKey(),
+  candidateId: text("candidate_id"),
+  employeeId: text("employee_id"),
+  testType: text("test_type").notNull().default("pre_employment"),
+  substance: text("substance").notNull().default("both"), // drug | alcohol | both
+  orderedDate: text("ordered_date"),
+  collectedDate: text("collected_date"),
+  resultDate: text("result_date"),
+  facility: text("facility"),
+  status: text("status").notNull().default("ordered"),
+  notes: text("notes"),
+  storageKey: text("storage_key"),
+  filename: text("filename"),
+  contentType: text("content_type"),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// An employee's OQ qualification for one task code (codes come from the OQ practice tests).
+export const hrOqQuals = pgTable("hr_oq_quals", {
+  id: text("id").primaryKey(),
+  employeeId: text("employee_id").notNull(),
+  taskCode: text("task_code").notNull(),
+  taskName: text("task_name").notNull(),
+  qualifiedDate: text("qualified_date").notNull(),
+  expiresDate: text("expires_date"),
+  notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
