@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { computeBar, addDays, type GanttProject, type Bar } from "@/lib/gantt";
 import GanttChart from "./gantt-chart";
+import StatusDialog from "./status-dialog";
 
 type Mode = "timeline" | "week" | "day";
 
@@ -61,7 +62,7 @@ function useItems(projects: GanttProject[]): Item[] {
   return useMemo(() => {
     const items: Item[] = [];
     for (const p of projects) {
-      if (p.status === "complete" || p.status === "billed") continue;
+      // Billed jobs have no bar; complete ones stay (grey) until they are billed.
       const bar = computeBar(p);
       if (bar) items.push({ project: p, bar });
     }
@@ -73,6 +74,8 @@ export default function CalendarView({ projects, events, readOnly }: { projects:
   const [mode, setMode] = useState<Mode>("timeline");
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
   const items = useItems(projects);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = selectedId ? projects.find((p) => p.id === selectedId) ?? null : null;
 
   const step = mode === "week" ? 7 : 1;
   const today = startOfDay(new Date());
@@ -117,12 +120,13 @@ export default function CalendarView({ projects, events, readOnly }: { projects:
 
       {mode === "timeline" && (
         <>
-          <GanttChart projects={projects} readOnly={readOnly} />
+          <GanttChart projects={projects} onSelect={setSelectedId} />
           <UpcomingEvents events={events} today={today} />
         </>
       )}
-      {mode === "week" && <WeekView items={items} events={events} weekStart={startOfWeek(anchor)} today={today} />}
-      {mode === "day" && <DayView items={items} events={events} day={anchor} />}
+      {mode === "week" && <WeekView items={items} events={events} weekStart={startOfWeek(anchor)} today={today} onSelect={setSelectedId} />}
+      {mode === "day" && <DayView items={items} events={events} day={anchor} onSelect={setSelectedId} />}
+      {selected && <StatusDialog project={selected} readOnly={readOnly} onClose={() => setSelectedId(null)} />}
     </div>
   );
 }
@@ -186,7 +190,7 @@ function UpcomingEvents({ events, today }: { events: CalendarEvent[]; today: Dat
   );
 }
 
-function WeekView({ items, events, weekStart, today }: { items: Item[]; events: CalendarEvent[]; weekStart: Date; today: Date }) {
+function WeekView({ items, events, weekStart, today, onSelect }: { items: Item[]; events: CalendarEvent[]; weekStart: Date; today: Date; onSelect: (id: string) => void }) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const hasEvents = days.some((d) => eventsOn(events, d).length > 0);
   const visible = items.filter((x) => dayDiff(x.bar.end, weekStart) >= 0 && dayDiff(x.bar.start, weekStart) <= 6);
@@ -287,7 +291,10 @@ function WeekView({ items, events, weekStart, today }: { items: Item[]; events: 
               />
             ))}
             <div
+              onClick={() => onSelect(project.id)}
+              title="Click to change status"
               style={{
+                cursor: "pointer",
                 gridColumn: `${startCol + 2} / ${endCol + 3}`,
                 gridRow: 1,
                 alignSelf: "center",
@@ -317,7 +324,7 @@ function WeekView({ items, events, weekStart, today }: { items: Item[]; events: 
   );
 }
 
-function DayView({ items, events, day }: { items: Item[]; events: CalendarEvent[]; day: Date }) {
+function DayView({ items, events, day, onSelect }: { items: Item[]; events: CalendarEvent[]; day: Date; onSelect: (id: string) => void }) {
   const visible = items.filter((x) => dayDiff(x.bar.start, day) <= 0 && dayDiff(x.bar.end, day) >= 0);
   const dayEvents = eventsOn(events, day);
 
@@ -383,6 +390,24 @@ function DayView({ items, events, day }: { items: Item[]; events: CalendarEvent[
             </div>
             <Row label="Crew" value={project.crew?.length ? project.crew.join(", ") : "Unassigned"} />
             <Row label="Completion" value={project.endDate || "TBD"} />
+            <button
+              onClick={() => onSelect(project.id)}
+              style={{
+                marginTop: 4,
+                alignSelf: "flex-start",
+                background: "var(--surface-2)",
+                color: "var(--ink)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                padding: "6px 12px",
+                fontSize: "0.8rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                textTransform: "capitalize",
+              }}
+            >
+              Status: {project.status} · change
+            </button>
           </div>
         );
       })}

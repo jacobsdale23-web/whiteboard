@@ -1,8 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import Link from "next/link";
-import { setProjectStatus } from "../board/actions";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { computeBar, addDays, startOfMonth, type GanttProject, type Bar } from "@/lib/gantt";
 
 const DAY_MS = 86400000;
@@ -92,34 +90,9 @@ const BAR_COLORS: Record<string, string> = {
   "status-complete": "var(--muted)",
 };
 
-const STATUS_CHOICES = [
-  { value: "upcoming", label: "Upcoming", hint: "Not started yet" },
-  { value: "active", label: "Active", hint: "Crew is working it" },
-  { value: "complete", label: "Complete", hint: "Done; stays on the calendar until billed" },
-  { value: "billed", label: "Billed", hint: "Invoiced; moves to Completed and leaves the calendar" },
-];
-
-export default function GanttChart({ projects, readOnly }: { projects: GanttProject[]; readOnly: boolean }) {
+export default function GanttChart({ projects, onSelect }: { projects: GanttProject[]; onSelect: (id: string) => void }) {
   const layout = useMemo(() => buildLayout(projects), [projects]);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; project: GanttProject } | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-  const [error, setError] = useState("");
-  // Read from the live list so the dialog reflects a change as soon as the page refreshes.
-  const selected = selectedId ? projects.find((p) => p.id === selectedId) ?? null : null;
-
-  function changeStatus(status: string) {
-    if (!selected || status === selected.status) return;
-    setError("");
-    startTransition(async () => {
-      try {
-        await setProjectStatus(selected.id, status);
-        setSelectedId(null);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Couldn't change the status.");
-      }
-    });
-  }
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -225,8 +198,7 @@ export default function GanttChart({ projects, readOnly }: { projects: GanttProj
                       onMouseLeave={() => setTooltip(null)}
                       onClick={() => {
                         setTooltip(null);
-                        setError("");
-                        setSelectedId(r.project.id);
+                        onSelect(r.project.id);
                       }}
                       style={{
                         position: "absolute",
@@ -278,70 +250,6 @@ export default function GanttChart({ projects, readOnly }: { projects: GanttProj
           </div>
         </div>
       </div>
-
-      {selected && (
-        <div
-          onClick={() => !pending && setSelectedId(null)}
-          style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 22px", width: "100%", maxWidth: 420, boxShadow: "0 16px 48px rgba(0,0,0,0.35)" }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: "1.05rem" }}>{selected.name}</div>
-                {selected.location && <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>{selected.location}</div>}
-              </div>
-              <button
-                onClick={() => setSelectedId(null)}
-                aria-label="Close"
-                style={{ border: "none", background: "transparent", color: "var(--muted)", fontSize: "1.4rem", lineHeight: 1, cursor: "pointer" }}
-              >
-                ×
-              </button>
-            </div>
-
-            {readOnly ? (
-              <div style={{ color: "var(--muted)", fontSize: "0.85rem", margin: "14px 0" }}>Status: {selected.status}</div>
-            ) : (
-              <>
-                <div style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", margin: "16px 0 8px" }}>Status</div>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {STATUS_CHOICES.map((s) => {
-                    const current = s.value === selected.status;
-                    return (
-                      <button
-                        key={s.value}
-                        disabled={pending}
-                        onClick={() => changeStatus(s.value)}
-                        style={{
-                          textAlign: "left",
-                          border: `1px solid ${current ? "var(--rust)" : "var(--border)"}`,
-                          background: current ? "var(--rust)" : "var(--surface-2)",
-                          color: current ? "var(--rust-ink)" : "var(--ink)",
-                          borderRadius: 8,
-                          padding: "10px 12px",
-                          cursor: pending ? "wait" : current ? "default" : "pointer",
-                        }}
-                      >
-                        <span style={{ fontWeight: 700, fontSize: "0.9rem" }}>{s.label}{current ? " (current)" : ""}</span>
-                        <span style={{ display: "block", fontSize: "0.76rem", opacity: 0.85 }}>{s.hint}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-            {error && <div style={{ color: "var(--danger)", fontSize: "0.82rem", marginTop: 10 }}>{error}</div>}
-            <div style={{ marginTop: 14 }}>
-              <Link href={`/projects/${selected.id}`} style={{ fontSize: "0.85rem", color: "var(--ink-soft)", textDecoration: "underline" }}>
-                Open project →
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
 
       {tooltip && (
         <div
