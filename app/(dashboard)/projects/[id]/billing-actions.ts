@@ -8,7 +8,7 @@ import { billingRates, billingTasks, tmInvoices, dailyLogs, projects } from "@/l
 import { getSessionAndProfile } from "@/lib/auth/current-user";
 import { buildInvoiceLineItems, sumLineItems, validateLineItems, findCrossCrewOverlaps, type TmLineItem } from "@/lib/tm-billing";
 import { RATE_SCHEDULES, type RateScheduleKey } from "@/lib/rate-schedules";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 // Real, server-enforced admin check — rates and invoice totals must never
 // be computable by a non-admin session regardless of what the UI shows.
@@ -174,6 +174,26 @@ export async function setInvoiceNumber(projectId: string, id: string, invoiceNum
   revalidatePath(`/projects/${projectId}`);
 }
 
+const CURRENCY = '"$"#,##0.00';
+const NAVY = "FF0C2140";
+
+type LogRow = typeof dailyLogs.$inferSelect;
+type InvoiceItem = NonNullable<(typeof tmInvoices.$inferSelect)["lineItems"]>[number];
+
+// The foreman's description of the work behind a line item: the log(s) for that
+// task, date, leak, Locusview number and address that the crew member worked on.
+function descriptionFor(li: InvoiceItem, logs: LogRow[]): string {
+  const sameJob = logs.filter(
+    (l) => l.date === li.date && l.leakNumber === li.leakNumber && (l.locusviewNumber || "") === li.locusviewNumber && (l.address || "") === li.address
+  );
+  const withCrew = sameJob.filter((l) => (l.crew || []).some((c) => c.name === li.crewMember));
+  const matches = withCrew.length ? withCrew : sameJob;
+  return [...new Set(matches.map((l) => (l.description || "").trim()).filter(Boolean))].join("\n\n");
+}
+
+// Rough row height for wrapped text: not every viewer sizes rows for us.
+const lineCount = (text: string, width: number) => text.split("\n").reduce((n, p) => n + Math.max(1, Math.ceil(p.length / (width * 1.05))), 0);
+
 export async function exportInvoiceExcel(projectId: string, id: string): Promise<{ filename: string; base64: string }> {
   await requireAdmin();
   const [invoice] = await db
@@ -182,6 +202,10 @@ export async function exportInvoiceExcel(projectId: string, id: string): Promise
     .where(and(eq(tmInvoices.id, id), eq(tmInvoices.projectId, projectId)));
   if (!invoice) throw new Error("Invoice not found.");
   const [task] = await db.select().from(billingTasks).where(eq(billingTasks.id, invoice.billingTaskId));
+  const allLogs = await db.select().from(dailyLogs).where(eq(dailyLogs.projectId, projectId));
+  const logs = allLogs
+    .filter((l) => l.taskNumber === task?.taskNumber && l.date >= invoice.periodStart && l.date <= invoice.periodEnd)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.leakNumber.localeCompare(b.leakNumber));
 
   const warnings = invoice.warnings || [];
   const flagsFor = (li: { crewMember: string; date: string }) =>
@@ -190,7 +214,32 @@ export async function exportInvoiceExcel(projectId: string, id: string): Promise
       .map((w) => w.message)
       .join("; ");
 
-  const header = [
+  // Same order as the invoice, but a job's crew sit together so its description
+  // is shown once, on the first of their rows.
+  const items = (invoice.lineItems || [])
+    .map((li) => ({ li, description: descriptionFor(li, logs), jobKey: `${li.date}|${li.leakNumber}|${li.locusviewNumber}|${li.address}` }))
+    .sort((a, b) => a.li.date.localeCompare(b.li.date) || a.jobKey.localeCompare(b.jobKey) || a.li.crewMember.localeCompare(b.li.crewMember));
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Invoice", {
+    views: [{ state: "frozen", ySplit: 10 }],
+    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+  });
+  ws.columns = [
+    { width: 12 }, // Date
+    { width: 22 }, // Crew member
+    { width: 15 }, // Position
+    { width: 12 }, // Leak #
+    { width: 14 }, // Locusview #
+    { width: 30 }, // Address
+    { width: 58 }, // Description
+    { width: 9 }, // Hours
+    { width: 12 }, // Rate
+    { width: 14 }, // Amount
+    { width: 36 }, // Flags
+  ];
+
+  const header: [string, string][] = [
     ["Task / Project Number", task?.taskNumber || ""],
     ["Project Name", task?.projectName || ""],
     ["Task Request No.", task?.taskRequestNo || ""],
@@ -199,37 +248,116 @@ export async function exportInvoiceExcel(projectId: string, id: string): Promise
     ["Bill To Address", task?.billToAddress || ""],
     ["Period", `${invoice.periodStart} to ${invoice.periodEnd}`],
     ["Invoice #", invoice.invoiceNumber || ""],
-    [],
-    ["Date", "Crew Member", "Position", "Leak #", "Locusview #", "Address", "Hours", "Rate", "Amount", "Flags"],
   ];
+  header.forEach(([k, v], i) => {
+    const r = ws.getRow(i + 1);
+    r.getCell(1).value = k;
+    r.getCell(1).font = { bold: true };
+    ws.mergeCells(i + 1, 1, i + 1, 2);
+    r.getCell(3).value = v;
+    ws.mergeCells(i + 1, 3, i + 1, 7);
+  });
 
-  const rows = (invoice.lineItems || []).map((li) => [
-    li.date,
-    li.crewMember,
-    li.position,
-    li.leakNumber,
-    li.locusviewNumber,
-    li.address,
-    li.hours,
-    li.rate,
-    li.amount,
-    flagsFor(li),
-  ]);
-  rows.push(["", "", "", "", "", "", "", "Total", Number(invoice.total), ""]);
+  const headRow = ws.getRow(10);
+  ["Date", "Crew Member", "Position", "Leak #", "Locusview #", "Address", "Description of Work", "Hours", "Rate", "Amount", "Flags"].forEach((t, i) => {
+    const c = headRow.getCell(i + 1);
+    c.value = t;
+    c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
+    c.alignment = { vertical: "middle", horizontal: i >= 7 && i <= 9 ? "right" : "left", wrapText: true };
+  });
+  headRow.height = 22;
+
+  const thin = { style: "thin" as const, color: { argb: "FFD0D5DD" } };
+  let rowNo = 11;
+  let prevKey = "";
+  for (const { li, description, jobKey } of items) {
+    const r = ws.getRow(rowNo);
+    const first = jobKey !== prevKey;
+    prevKey = jobKey;
+    const shown = first ? description : "";
+    const flags = flagsFor(li);
+    r.getCell(1).value = li.date;
+    r.getCell(2).value = li.crewMember;
+    r.getCell(3).value = li.position;
+    r.getCell(4).value = li.leakNumber;
+    r.getCell(5).value = li.locusviewNumber;
+    r.getCell(6).value = li.address;
+    r.getCell(7).value = shown;
+    r.getCell(8).value = li.hours;
+    r.getCell(8).numFmt = "0.00";
+    r.getCell(9).value = li.rate;
+    r.getCell(9).numFmt = CURRENCY;
+    r.getCell(10).value = li.amount;
+    r.getCell(10).numFmt = CURRENCY;
+    r.getCell(11).value = flags;
+    for (let c = 1; c <= 11; c++) {
+      r.getCell(c).alignment = { vertical: "top", wrapText: c === 6 || c === 7 || c === 11 };
+      r.getCell(c).border = { bottom: thin };
+    }
+    r.height = Math.max(15, 15 * Math.max(lineCount(li.address, 30), lineCount(shown, 58), lineCount(flags, 36)));
+    rowNo++;
+  }
+
+  const total = ws.getRow(rowNo);
+  total.getCell(7).value = "Total";
+  total.getCell(8).value = items.reduce((n, x) => n + (Number(x.li.hours) || 0), 0);
+  total.getCell(8).numFmt = "0.00";
+  total.getCell(10).value = Number(invoice.total);
+  total.getCell(10).numFmt = CURRENCY;
+  for (let c = 7; c <= 10; c++) {
+    total.getCell(c).font = { bold: true };
+    total.getCell(c).border = { top: { style: "medium", color: { argb: NAVY } } };
+  }
+  total.getCell(7).alignment = { horizontal: "right" };
+  rowNo += 2;
 
   if (warnings.length) {
-    rows.push([]);
-    rows.push(["Flagged Issues", "", "", "", "", "", "", "", "", ""]);
+    ws.getRow(rowNo).getCell(1).value = "Flagged Issues";
+    ws.getRow(rowNo).getCell(1).font = { bold: true };
+    rowNo++;
     for (const w of warnings) {
-      rows.push([w.severity.toUpperCase(), w.message, "", "", "", "", "", "", "", ""]);
+      ws.getRow(rowNo).getCell(1).value = w.severity.toUpperCase();
+      ws.getRow(rowNo).getCell(2).value = w.message;
+      rowNo++;
     }
   }
 
-  const sheet = XLSX.utils.aoa_to_sheet([...header, ...rows]);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, sheet, "Invoice");
-  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  // Backup sheet: each daily log in the period, in full, to check the invoice against.
+  const bs = wb.addWorksheet("Daily Log Backup", {
+    views: [{ state: "frozen", ySplit: 1 }],
+    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+  });
+  bs.columns = [{ width: 12 }, { width: 12 }, { width: 14 }, { width: 30 }, { width: 18 }, { width: 34 }, { width: 9 }, { width: 62 }];
+  ["Date", "Leak #", "Locusview #", "Address", "Foreman", "Crew (position, hours)", "Hours", "Description of Work"].forEach((t, i) => {
+    const c = bs.getRow(1).getCell(i + 1);
+    c.value = t;
+    c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
+    c.alignment = { vertical: "middle", horizontal: i === 6 ? "right" : "left", wrapText: true };
+  });
+  logs.forEach((l, i) => {
+    const r = bs.getRow(i + 2);
+    const crew = l.crew || [];
+    const crewText = crew.map((c) => `${c.name} (${c.position}, ${Number(c.hours) || 0}h)`).join("\n");
+    const description = (l.description || "").trim();
+    r.getCell(1).value = l.date;
+    r.getCell(2).value = l.leakNumber;
+    r.getCell(3).value = l.locusviewNumber || "";
+    r.getCell(4).value = l.address || "";
+    r.getCell(5).value = l.foreman || "";
+    r.getCell(6).value = crewText;
+    r.getCell(7).value = crew.reduce((n, c) => n + (Number(c.hours) || 0), 0);
+    r.getCell(7).numFmt = "0.00";
+    r.getCell(8).value = description;
+    for (let c = 1; c <= 8; c++) {
+      r.getCell(c).alignment = { vertical: "top", wrapText: c === 4 || c === 6 || c === 8 };
+      r.getCell(c).border = { bottom: thin };
+    }
+    r.height = Math.max(15, 15 * Math.max(lineCount(l.address || "", 30), lineCount(crewText, 34), lineCount(description, 62)));
+  });
 
+  const buf = Buffer.from(await wb.xlsx.writeBuffer());
   const filename = `TM-Invoice-${task?.taskNumber || "invoice"}-${invoice.periodStart}_${invoice.periodEnd}.xlsx`;
   return { filename, base64: buf.toString("base64") };
 }
