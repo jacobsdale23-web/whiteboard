@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { profileCompanies, profiles } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { companyForEmail } from "@/lib/auth/allowed-signup";
 
 // These are the people marked as admins in the original artifact's Team
 // roster — auto-promoted to admin on their first sign-in here so the move
@@ -52,8 +53,14 @@ export async function ensureProfile(user: NeonAuthUser) {
       allCompanies: ALL_COMPANY_EMAILS.has(email),
     })
     .returning();
-  if (isFoundingAdmin && !created.allCompanies) {
-    await db.insert(profileCompanies).values({ profileId: created.id, companyId: DEFAULT_COMPANY }).onConflictDoNothing();
+  // A sibling company's own email domain puts the person straight into that
+  // company; a founding admin without an all-company flag starts in FWI.
+  const domainCompany = companyForEmail(email);
+  if (!created.allCompanies) {
+    const companyId = domainCompany ?? (isFoundingAdmin ? DEFAULT_COMPANY : null);
+    if (companyId) {
+      await db.insert(profileCompanies).values({ profileId: created.id, companyId }).onConflictDoNothing();
+    }
   }
   return created;
 }
