@@ -13,6 +13,7 @@ import {
   deleteTmInvoice,
   setInvoiceNumber,
   exportInvoiceExcel,
+  rescreenInvoice,
   removeInvoiceLineItem,
 } from "./billing-actions";
 
@@ -37,7 +38,14 @@ type TmLineItem = {
   rate: number;
   amount: number;
 };
-type TmWarning = { severity: "error" | "warning"; type: string; message: string; date: string; crewMember: string };
+type TmWarning = {
+  severity: "error" | "warning";
+  type: string;
+  message: string;
+  date: string;
+  crewMember: string;
+  cells?: { date: string; crewMember: string; field: string; value?: string }[];
+};
 type TmInvoice = {
   id: string;
   billingTaskId: string;
@@ -418,6 +426,9 @@ function InvoiceCard({ projectId, invoice, tasks }: { projectId: string; invoice
                 Approve
               </button>
             )}
+            <button onClick={() => startTransition(() => rescreenInvoice(projectId, invoice.id))} style={secondaryBtnStyle} title="Check this invoice again against the current daily logs">
+              Re-screen
+            </button>
             <button onClick={handleExport} style={secondaryBtnStyle}>
               Export to Excel
             </button>
@@ -445,16 +456,21 @@ function InvoiceCard({ projectId, invoice, tasks }: { projectId: string; invoice
               </thead>
               <tbody>
                 {(invoice.lineItems || []).map((li, i) => {
-                  const flagged = warnings.some((w) => w.crewMember === li.crewMember && w.date === li.date);
+                  // Whole-row tint for the basic checks; single cells for the consistency checks.
+                  const flagged = warnings.some((w) => !w.cells && w.crewMember === li.crewMember && w.date === li.date);
+                  const hl = (field: "crewMember" | "position" | "leakNumber" | "locusviewNumber" | "address" | "hours"): React.CSSProperties =>
+                    warnings.some((w) => w.cells?.some((c) => c.date === li.date && c.crewMember === li.crewMember && c.field === field && (c.value === undefined || c.value === String(li[field]))))
+                      ? { background: "#ffe699", color: "#5c3d00" }
+                      : {};
                   return (
                     <tr key={i} style={flagged ? { background: "var(--danger-bg, #fdecea)" } : undefined}>
                       <td style={tdStyle}>{li.date}</td>
-                      <td style={{ ...tdStyle, fontFamily: "inherit" }}>{li.crewMember}</td>
-                      <td style={{ ...tdStyle, fontFamily: "inherit" }}>{li.position}</td>
-                      <td style={tdStyle}>{li.leakNumber}</td>
-                      <td style={tdStyle}>{li.locusviewNumber}</td>
-                      <td style={{ ...tdStyle, fontFamily: "inherit" }}>{li.address}</td>
-                      <td style={tdStyle}>{li.hours}</td>
+                      <td style={{ ...tdStyle, fontFamily: "inherit", ...hl("crewMember") }}>{li.crewMember}</td>
+                      <td style={{ ...tdStyle, fontFamily: "inherit", ...hl("position") }}>{li.position}</td>
+                      <td style={{ ...tdStyle, ...hl("leakNumber") }}>{li.leakNumber}</td>
+                      <td style={{ ...tdStyle, ...hl("locusviewNumber") }}>{li.locusviewNumber}</td>
+                      <td style={{ ...tdStyle, fontFamily: "inherit", ...hl("address") }}>{li.address}</td>
+                      <td style={{ ...tdStyle, ...hl("hours") }}>{li.hours}</td>
                       <td style={tdStyle}>${li.rate.toFixed(2)}</td>
                       <td style={tdStyle}>${li.amount.toFixed(2)}</td>
                       <td style={tdStyle}>

@@ -240,7 +240,17 @@ export const tmInvoices = pgTable("tm_invoices", {
   // Screening results from generation time: missing data, 17+ hour shifts,
   // and cross-crew overlaps. Frozen alongside lineItems for the same reason.
   warnings: jsonb("warnings")
-    .$type<{ severity: "error" | "warning"; type: string; message: string; date: string; crewMember: string }[]>()
+    .$type<
+      {
+        severity: "error" | "warning";
+        type: string;
+        message: string;
+        date: string;
+        crewMember: string;
+        // Which cells to highlight (data-consistency flags only).
+        cells?: { date: string; crewMember: string; field: string; value?: string }[];
+      }[]
+    >()
     .default([]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   approvedAt: timestamp("approved_at"),
