@@ -66,7 +66,23 @@ export async function saveProject(id: string | null, data: ProjectInput) {
 
   revalidatePath("/board");
   revalidatePath("/calendar");
+  revalidatePath("/completed");
   if (id) revalidatePath(`/projects/${id}`);
+}
+
+// "complete" jobs stay on the calendar (grey) until they are billed; "billed"
+// jobs drop off the calendar and live only in the Completed list.
+export async function setProjectBilled(id: string, billed: boolean) {
+  await assertNotSafety();
+  const existing = await db.query.projects.findFirst({ where: eq(projects.id, id) });
+  if (!existing) return;
+  await assertCompanyAccess(existing.companyId);
+  if (existing.status !== "complete" && existing.status !== "billed") throw new Error("Only a completed job can be marked billed.");
+  await db.update(projects).set({ status: billed ? "billed" : "complete" }).where(eq(projects.id, id));
+  revalidatePath("/board");
+  revalidatePath("/calendar");
+  revalidatePath("/completed");
+  revalidatePath(`/projects/${id}`);
 }
 
 export async function deleteProject(id: string) {

@@ -19,7 +19,12 @@ type ProjectRow = {
 };
 type CrewMember = { id: string; name: string };
 
-const STATUSES = ["upcoming", "active", "complete"];
+const STATUSES = [
+  { value: "upcoming", label: "upcoming" },
+  { value: "active", label: "active" },
+  { value: "complete", label: "complete (stays on calendar until billed)" },
+  { value: "billed", label: "billed (moves to Completed, off calendar)" },
+];
 const BILLING_TYPES = [
   { value: "lump_sum", label: "Lump Sum / Unit Price" },
   { value: "tm", label: "T&M" },
@@ -109,8 +114,8 @@ export default function ProjectFormModal({ project, crewList }: { project?: Proj
             <Field label="Status">
               <select name="status" defaultValue={project?.status || "upcoming"} style={inputStyle}>
                 {STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
+                  <option key={s.value} value={s.value}>
+                    {s.label}
                   </option>
                 ))}
               </select>

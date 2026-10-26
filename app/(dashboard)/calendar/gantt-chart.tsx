@@ -110,7 +110,7 @@ export default function GanttChart({ projects }: { projects: GanttProject[] }) {
         <Legend color="var(--active)" label="Active" />
         <Legend color="var(--upcoming)" label="Upcoming" />
         <Legend color="var(--danger)" label="Overdue" />
-        <Legend color="var(--muted)" label="Completed" />
+        <Legend color="var(--muted)" label="Completed, not yet billed" />
       </div>
       <div
         style={{

@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { setProjectBilled } from "../board/actions";
 
 type Project = {
   id: string;
   name: string;
+  status: string;
   location: string | null;
   endDate: string | null;
   value: string | null;
@@ -14,8 +16,13 @@ type Project = {
   projectNumber: string | null;
 };
 
-export default function CompletedList({ projects }: { projects: Project[] }) {
+type Filter = "all" | "complete" | "billed";
+
+export default function CompletedList({ projects, canEdit }: { projects: Project[]; canEdit: boolean }) {
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [pending, startTransition] = useTransition();
+  const unbilled = projects.filter((p) => p.status === "complete").length;
 
   const sorted = useMemo(
     () =>
@@ -27,17 +34,43 @@ export default function CompletedList({ projects }: { projects: Project[] }) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return sorted;
     return sorted.filter(
       (p) =>
-        p.name.toLowerCase().includes(q) ||
-        (p.projectNumber || "").toLowerCase().includes(q) ||
-        (p.location || "").toLowerCase().includes(q)
+        (filter === "all" || p.status === filter) &&
+        (!q ||
+          p.name.toLowerCase().includes(q) ||
+          (p.projectNumber || "").toLowerCase().includes(q) ||
+          (p.location || "").toLowerCase().includes(q))
     );
-  }, [sorted, query]);
+  }, [sorted, query, filter]);
+
+  const tabs: { key: Filter; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "complete", label: `Needs billing (${unbilled})` },
+    { key: "billed", label: "Billed" },
+  ];
 
   return (
     <div>
+      <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden", width: "fit-content", marginBottom: 14 }}>
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setFilter(t.key)}
+            style={{
+              border: "none",
+              padding: "8px 14px",
+              fontWeight: 600,
+              fontSize: "0.82rem",
+              cursor: "pointer",
+              background: filter === t.key ? "var(--rust)" : "var(--surface)",
+              color: filter === t.key ? "var(--rust-ink)" : "var(--ink)",
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
       <input
         type="text"
         placeholder="Search by name, project number, or location…"
@@ -49,28 +82,50 @@ export default function CompletedList({ projects }: { projects: Project[] }) {
       <div style={cardStyle}>
         {filtered.length ? (
           filtered.map((p) => (
-            <Link key={p.id} href={`/projects/${p.id}`} style={rowStyle}>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: "0.92rem" }}>
-                  {p.projectNumber && <span style={{ color: "var(--muted)", fontFamily: "var(--font-mono)" }}>{p.projectNumber} · </span>}
-                  {p.name}
-                  {p.billingType === "tm" && <span style={tmChipStyle}>T&amp;M</span>}
-                </div>
-                <div style={{ color: "var(--muted)", fontSize: "0.8rem" }}>{p.location}</div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: "0.8rem" }}>Completed: {p.endDate || "—"}</div>
-                {p.value !== null && (
-                  <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
-                    {p.value ? `$${Number(p.value).toLocaleString()}` : "—"}
+            <div key={p.id} style={{ ...rowStyle, padding: 0 }}>
+              <Link href={`/projects/${p.id}`} style={{ ...rowStyle, borderBottom: "none", flex: 1, minWidth: 0 }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: "0.92rem" }}>
+                    {p.projectNumber && <span style={{ color: "var(--muted)", fontFamily: "var(--font-mono)" }}>{p.projectNumber} · </span>}
+                    {p.name}
+                    {p.billingType === "tm" && <span style={tmChipStyle}>T&amp;M</span>}
+                    {p.status === "complete" && <span style={{ ...tmChipStyle, background: "#ffe699", color: "#5c4400" }}>Needs billing</span>}
                   </div>
-                )}
-              </div>
-            </Link>
+                  <div style={{ color: "var(--muted)", fontSize: "0.8rem" }}>{p.location}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: "0.8rem" }}>Completed: {p.endDate || "—"}</div>
+                  {p.value !== null && (
+                    <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
+                      {p.value ? `$${Number(p.value).toLocaleString()}` : "—"}
+                    </div>
+                  )}
+                </div>
+              </Link>
+              {canEdit && (
+                <button
+                  disabled={pending}
+                  onClick={() => startTransition(() => setProjectBilled(p.id, p.status !== "billed"))}
+                  style={{
+                    border: "1px solid var(--border)",
+                    background: "var(--surface)",
+                    color: "var(--ink)",
+                    borderRadius: 6,
+                    padding: "6px 10px",
+                    fontSize: "0.78rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    flexShrink: 0,
+                  }}
+                >
+                  {p.status === "billed" ? "Undo billed" : "Mark billed"}
+                </button>
+              )}
+            </div>
           ))
         ) : (
           <p style={{ color: "var(--muted)", fontSize: "0.85rem", padding: "12px 0" }}>
-            {projects.length ? "No completed projects match that search." : "No completed projects yet."}
+            {projects.length ? "No projects match that filter or search." : "No completed projects yet."}
           </p>
         )}
       </div>

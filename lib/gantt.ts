@@ -71,5 +71,6 @@ export function computeBar(p: GanttProject): Bar | null {
     if (end) return { start: start || addDays(end, -30), end, cls: "status-complete", estimated: !start };
     return null;
   }
+  // "billed" jobs are finished and invoiced: no bar, so they leave the calendar.
   return null;
 }

@@ -1,0 +1,3 @@
+Add 'billed' project status: complete stays grey on calendar, billed leaves it
+
+A completed job stays on the timeline (grey) until it is billed. Billed jobs have no bar and drop off the calendar; they live on the Completed page, which now shows both with Needs billing / Billed filters and a one-click Mark billed button. Status dropdown gains 'billed'.

@@ -61,7 +61,7 @@ function useItems(projects: GanttProject[]): Item[] {
   return useMemo(() => {
     const items: Item[] = [];
     for (const p of projects) {
-      if (p.status === "complete") continue;
+      if (p.status === "complete" || p.status === "billed") continue;
       const bar = computeBar(p);
       if (bar) items.push({ project: p, bar });
     }
