@@ -31,6 +31,7 @@ export default async function CalendarPage() {
     <section>
       <h2 style={{ marginBottom: 16 }}>Calendar</h2>
       <CalendarView
+        readOnly={readOnly}
         events={events}
         projects={allProjects.map((p) => ({
           id: p.id,

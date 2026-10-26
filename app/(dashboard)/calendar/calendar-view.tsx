@@ -69,7 +69,7 @@ function useItems(projects: GanttProject[]): Item[] {
   }, [projects]);
 }
 
-export default function CalendarView({ projects, events }: { projects: GanttProject[]; events: CalendarEvent[] }) {
+export default function CalendarView({ projects, events, readOnly }: { projects: GanttProject[]; events: CalendarEvent[]; readOnly: boolean }) {
   const [mode, setMode] = useState<Mode>("timeline");
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
   const items = useItems(projects);
@@ -117,7 +117,7 @@ export default function CalendarView({ projects, events }: { projects: GanttProj
 
       {mode === "timeline" && (
         <>
-          <GanttChart projects={projects} />
+          <GanttChart projects={projects} readOnly={readOnly} />
           <UpcomingEvents events={events} today={today} />
         </>
       )}

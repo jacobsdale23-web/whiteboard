@@ -70,6 +70,36 @@ export async function saveProject(id: string | null, data: ProjectInput) {
   if (id) revalidatePath(`/projects/${id}`);
 }
 
+const PROJECT_STATUSES = ["upcoming", "active", "complete", "billed"];
+
+// Status-only change, used from the calendar timeline. Mirrors what saveProject
+// does on a status change: a lump-sum job getting its first "active" status is
+// numbered, and a job marked complete with no completion date gets today's, so
+// its bar still has an end on the timeline.
+export async function setProjectStatus(id: string, status: string) {
+  await assertNotSafety();
+  if (!PROJECT_STATUSES.includes(status)) throw new Error("Unknown status.");
+  const existing = await db.query.projects.findFirst({ where: eq(projects.id, id) });
+  if (!existing) throw new Error("Project not found.");
+  await assertCompanyAccess(existing.companyId);
+
+  const changes: Partial<typeof projects.$inferInsert> = { status };
+  if (status === "active" && existing.status !== "active" && !existing.projectNumber && existing.billingType === "lump_sum") {
+    const year = existing.startDate ? parseInt(existing.startDate.slice(0, 4), 10) : new Date().getFullYear();
+    const allNumbers = await db.select({ projectNumber: projects.projectNumber }).from(projects).where(eq(projects.companyId, existing.companyId));
+    changes.projectNumber = computeNextProjectNumber(allNumbers.map((r) => r.projectNumber), year);
+  }
+  if (status === "complete" && !existing.endDate) {
+    changes.endDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+  }
+  await db.update(projects).set(changes).where(eq(projects.id, id));
+
+  revalidatePath("/board");
+  revalidatePath("/calendar");
+  revalidatePath("/completed");
+  revalidatePath(`/projects/${id}`);
+}
+
 // "complete" jobs stay on the calendar (grey) until they are billed; "billed"
 // jobs drop off the calendar and live only in the Completed list.
 export async function setProjectBilled(id: string, billed: boolean) {
