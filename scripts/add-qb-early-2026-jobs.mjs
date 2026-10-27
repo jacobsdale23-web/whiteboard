@@ -18,10 +18,12 @@ const JOBS = [
   ["26015", "Bridge Bore (190)", "City of Denham Springs", "2026-02-18", null, 57766.0],
   ["26018", "Leak Repair", "Kentwood Brick", "2026-02-12", null, 3750.0],
   ["26022", "Chauvin Ph1", "Atmos Energy Corporation", "2026-02-23", null, 124025.0],
+  ["26023", `Pennington 5" Steel Offset (Ph 2)`, "Bayou Lacombe Construction Company", "2026-02-23", null, 47000.0],
   ["26024", `6" Bore`, "Louisiana State Penitentiary", "2026-02-24", null, 97275.0],
   ["26025", `4" Mueller Taps`, "System Services Pipeline, LLC", "2026-03-06", null, 4800.0],
   ["26026", "Water Leak Repair", "Louisiana Veterans Home", "2026-03-13", null, 3250.0],
   ["26028", `4" TDW Tap Tee`, "Smith Meter, Inc. SMR", "2026-03-16", "2026-03-16", 10659.0],
+  ["26029", "Emergency Gas Leak Repair", "Mississippi River Gas, LLC.", "2026-03-16", "2026-03-16", 9365.0],
   ["26032", "PVC Leak Repair", "Town of Clinton", "2026-04-06", null, 21000.0],
 ];
 

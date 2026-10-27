@@ -8,6 +8,24 @@ import { canAccessCompany, getWorkspace, switchCompanyUrl } from "@/lib/auth/com
 import MilestoneSection from "./milestone-section";
 import LogSection from "./log-section";
 import BudgetSection from "./budget-section";
+import QuickBooksCard from "./quickbooks-card";
+import { sortedPayApps, rollupAt } from "@/lib/sov";
+
+// White Board's own billed-to-date (pay apps) and cost (receipts, expenses and
+// vendor invoices), the same figures the Budget section shows.
+function whiteboardFigures(b: {
+  expenses: { amount: string }[];
+  invoices: { amount: string }[];
+  receipts: { amount: string }[];
+  payApps: Parameters<typeof sortedPayApps>[0];
+  sovItems: Parameters<typeof rollupAt>[0];
+  sovEntries: Parameters<typeof rollupAt>[1];
+}) {
+  const ordered = sortedPayApps(b.payApps);
+  const roll = ordered.length ? rollupAt(b.sovItems, b.sovEntries, ordered, ordered.length - 1) : null;
+  const cost = [...b.expenses, ...b.invoices, ...b.receipts].reduce((sum, x) => sum + Number(x.amount || 0), 0);
+  return { billed: roll ? roll.totalCompleted : null, cost };
+}
 import BillingSection from "./billing-section";
 import JsaSection from "./jsa-section";
 import EquipmentSection from "./equipment-section";
@@ -133,6 +151,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           <Fact label="Crew" value={project.crew?.length ? project.crew.join(", ") : "Unassigned"} />
         </div>
       </div>
+
+      {isAdmin && !readOnly && budgetData && (
+        <QuickBooksCard projectNumber={project.projectNumber} wb={whiteboardFigures(budgetData)} />
+      )}
 
       {!readOnly && <div style={{ marginBottom: 20 }}>
         {isAdmin && budgetData ? (

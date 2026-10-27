@@ -346,6 +346,23 @@ export const sovEntries = pgTable("sov_entries", {
   stored: numeric("stored").notNull().default("0"),
 });
 
+// Per-job money totals copied from the QuickBooks Projects page (read-only in
+// White Board; refreshed by the Monday/Friday QuickBooks sync). Keyed by the
+// QuickBooks project number, so several White Board projects that share one
+// number (like the 26046 lots) all see the same job.
+export const qbJobs = pgTable("qb_jobs", {
+  projectNumber: text("project_number").primaryKey(),
+  name: text("name").notNull(),
+  customer: text("customer"),
+  status: text("status"), // QuickBooks: In progress | Completed | Canceled | Not started
+  startDate: text("start_date"),
+  endDate: text("end_date"),
+  income: numeric("income").notNull().default("0"),
+  cost: numeric("cost").notNull().default("0"),
+  hours: numeric("hours"),
+  syncedAt: timestamp("synced_at").defaultNow().notNull(),
+});
+
 export const opportunities = pgTable("opportunities", {
   id: text("id").primaryKey(),
   companyId: text("company_id").notNull(),
