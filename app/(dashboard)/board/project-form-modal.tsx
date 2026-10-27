@@ -133,10 +133,9 @@ export default function ProjectFormModal({ project, crewList }: { project?: Proj
               <input
                 type="text"
                 name="projectNumber"
-                inputMode="numeric"
-                maxLength={5}
-                pattern="\d{5}"
-                title="The 5-digit project number from QuickBooks, like 26108"
+                maxLength={12}
+                pattern="(\d{5}|\d{2}[A-Za-z]{3,10})"
+                title="The project number from QuickBooks, like 26108"
                 placeholder="From QuickBooks, like 26108"
                 defaultValue={project?.projectNumber || ""}
                 style={inputStyle}

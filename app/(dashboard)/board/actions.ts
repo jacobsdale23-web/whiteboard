@@ -36,7 +36,7 @@ export async function saveProject(id: string | null, data: ProjectInput) {
   // White Board never makes one up. A job without one is flagged until it is entered.
   const projectNumber = data.projectNumber?.trim() || null;
   if (projectNumber && !QB_NUMBER_RE.test(projectNumber)) {
-    throw new Error("Use the 5-digit project number from QuickBooks (for example 26108).");
+    throw new Error("Use the project number exactly as it appears in QuickBooks (for example 26108).");
   }
 
   const values = {
