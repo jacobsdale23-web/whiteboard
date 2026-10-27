@@ -103,7 +103,15 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   }
 
   const statusColor =
-    project.status === "active" ? "var(--active)" : project.status === "upcoming" ? "var(--upcoming)" : "var(--muted)";
+    project.status === "active"
+      ? "var(--active)"
+      : project.status === "upcoming"
+        ? "var(--upcoming)"
+        : project.status === "on_hold"
+          ? "var(--hold, #b7791f)"
+          : project.status === "canceled"
+            ? "var(--danger)"
+            : "var(--muted)";
 
   return (
     <div>
@@ -125,7 +133,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                 textTransform: "uppercase",
               }}
             >
-              {project.status}
+              {project.status.replace("_", " ")}
             </span>
             {project.projectNumber ? (
               <span style={{ marginLeft: 8, color: "var(--muted)", fontFamily: "var(--font-mono)", fontSize: "0.82rem", fontWeight: 600 }}>

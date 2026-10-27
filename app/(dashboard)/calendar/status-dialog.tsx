@@ -8,8 +8,10 @@ import type { GanttProject } from "@/lib/gantt";
 const STATUS_CHOICES = [
   { value: "upcoming", label: "Upcoming", hint: "Not started yet" },
   { value: "active", label: "Active", hint: "Crew is working it" },
+  { value: "on_hold", label: "On hold", hint: "Paused; we'll come back to it. Stays on the calendar and board in its own color" },
   { value: "complete", label: "Complete", hint: "Done; stays on the calendar until billed" },
   { value: "billed", label: "Billed", hint: "Invoiced; moves to Completed and leaves the calendar" },
+  { value: "canceled", label: "Canceled", hint: "Won't happen; moves to Completed (Canceled tab) and leaves the calendar" },
 ];
 
 // Opened by clicking a job on the timeline, week or day view.
@@ -54,7 +56,7 @@ export default function StatusDialog({ project, readOnly, onClose }: { project: 
         </div>
 
         {readOnly ? (
-          <div style={{ color: "var(--muted)", fontSize: "0.85rem", margin: "14px 0" }}>Status: {project.status}</div>
+          <div style={{ color: "var(--muted)", fontSize: "0.85rem", margin: "14px 0" }}>Status: {project.status.replace("_", " ")}</div>
         ) : (
           <>
             <div style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", margin: "16px 0 8px" }}>Status</div>

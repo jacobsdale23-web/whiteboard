@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { setProjectBilled } from "../board/actions";
+import { setProjectBilled, setProjectStatus } from "../board/actions";
 
 type Project = {
   id: string;
@@ -16,7 +16,7 @@ type Project = {
   projectNumber: string | null;
 };
 
-type Filter = "all" | "complete" | "billed";
+type Filter = "all" | "complete" | "billed" | "canceled";
 
 export default function CompletedList({ projects, canEdit }: { projects: Project[]; canEdit: boolean }) {
   const [query, setQuery] = useState("");
@@ -48,6 +48,7 @@ export default function CompletedList({ projects, canEdit }: { projects: Project
     { key: "all", label: "All" },
     { key: "complete", label: `Needs billing (${unbilled})` },
     { key: "billed", label: "Billed" },
+    { key: "canceled", label: "Canceled" },
   ];
 
   return (
@@ -90,6 +91,7 @@ export default function CompletedList({ projects, canEdit }: { projects: Project
                     {p.name}
                     {p.billingType === "tm" && <span style={tmChipStyle}>T&amp;M</span>}
                     {p.status === "complete" && <span style={{ ...tmChipStyle, background: "#ffe699", color: "#5c4400" }}>Needs billing</span>}
+                    {p.status === "canceled" && <span style={{ ...tmChipStyle, background: "var(--danger)", color: "#fff" }}>Canceled</span>}
                   </div>
                   <div style={{ color: "var(--muted)", fontSize: "0.8rem" }}>{p.location}</div>
                 </div>
@@ -105,7 +107,9 @@ export default function CompletedList({ projects, canEdit }: { projects: Project
               {canEdit && (
                 <button
                   disabled={pending}
-                  onClick={() => startTransition(() => setProjectBilled(p.id, p.status !== "billed"))}
+                  onClick={() =>
+                    startTransition(() => (p.status === "canceled" ? setProjectStatus(p.id, "upcoming") : setProjectBilled(p.id, p.status !== "billed")))
+                  }
                   style={{
                     border: "1px solid var(--border)",
                     background: "var(--surface)",
@@ -118,7 +122,7 @@ export default function CompletedList({ projects, canEdit }: { projects: Project
                     flexShrink: 0,
                   }}
                 >
-                  {p.status === "billed" ? "Undo billed" : "Mark billed"}
+                  {p.status === "canceled" ? "Reopen" : p.status === "billed" ? "Undo billed" : "Mark billed"}
                 </button>
               )}
             </div>

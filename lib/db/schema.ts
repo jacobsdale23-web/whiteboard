@@ -93,7 +93,7 @@ export const projects = pgTable("projects", {
   companyId: text("company_id").notNull(),
   name: text("name").notNull(),
   location: text("location"),
-  status: text("status").notNull().default("upcoming"), // "active" | "upcoming" | "complete" | "billed"
+  status: text("status").notNull().default("upcoming"), // "active" | "upcoming" | "on_hold" | "complete" | "billed" | "canceled"
   startDate: text("start_date"),
   endDate: text("end_date"),
   duration: text("duration"),

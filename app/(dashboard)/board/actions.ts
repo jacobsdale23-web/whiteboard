@@ -65,7 +65,7 @@ export async function saveProject(id: string | null, data: ProjectInput) {
   if (id) revalidatePath(`/projects/${id}`);
 }
 
-const PROJECT_STATUSES = ["upcoming", "active", "complete", "billed"];
+const PROJECT_STATUSES = ["upcoming", "active", "on_hold", "complete", "billed", "canceled"];
 
 // Status-only change, used from the calendar timeline. A job marked complete
 // with no completion date gets today's, so its bar still has an end on the

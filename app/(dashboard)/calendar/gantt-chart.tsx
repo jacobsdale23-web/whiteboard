@@ -88,6 +88,7 @@ const BAR_COLORS: Record<string, string> = {
   "status-upcoming": "var(--upcoming)",
   "status-overdue": "var(--danger)",
   "status-complete": "var(--muted)",
+  "status-hold": "var(--hold, #b7791f)",
 };
 
 export default function GanttChart({ projects, onSelect }: { projects: GanttProject[]; onSelect: (id: string) => void }) {
@@ -110,6 +111,7 @@ export default function GanttChart({ projects, onSelect }: { projects: GanttProj
         <Legend color="var(--active)" label="Active" />
         <Legend color="var(--upcoming)" label="Upcoming" />
         <Legend color="var(--danger)" label="Overdue" />
+        <Legend color="var(--hold, #b7791f)" label="On hold" />
         <Legend color="var(--muted)" label="Completed, not yet billed" />
       </div>
       <div

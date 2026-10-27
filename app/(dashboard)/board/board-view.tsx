@@ -40,6 +40,7 @@ function matches(query: string, ...fields: (string | null | undefined | string[]
 export default function BoardView({
   active,
   upcoming,
+  onHold,
   completed,
   foremen,
   atShop,
@@ -47,6 +48,7 @@ export default function BoardView({
 }: {
   active: BoardProject[];
   upcoming: BoardProject[];
+  onHold: BoardProject[];
   completed: CompletedProject[];
   foremen: CrewMember[];
   atShop: CrewMember[];
@@ -57,18 +59,19 @@ export default function BoardView({
   const searching = q.trim().length > 0;
 
   const shown = useMemo(() => {
-    if (!searching) return { active, upcoming, completed: [] as CompletedProject[], completedTotal: 0 };
+    if (!searching) return { active, upcoming, onHold, completed: [] as CompletedProject[], completedTotal: 0 };
     const a = active.filter((p) => matches(q, p.name, p.projectNumber, p.location, p.customer, p.crew));
     const u = upcoming.filter((p) => matches(q, p.name, p.projectNumber, p.location, p.customer, p.crew));
+    const h = onHold.filter((p) => matches(q, p.name, p.projectNumber, p.location, p.customer, p.crew));
     const c = completed.filter((p) => matches(q, p.name, p.projectNumber, p.location, p.customer));
-    return { active: a, upcoming: u, completed: c.slice(0, MAX_COMPLETED_SHOWN), completedTotal: c.length };
-  }, [q, searching, active, upcoming, completed]);
+    return { active: a, upcoming: u, onHold: h, completed: c.slice(0, MAX_COMPLETED_SHOWN), completedTotal: c.length };
+  }, [q, searching, active, upcoming, onHold, completed]);
 
-  const totalMatches = shown.active.length + shown.upcoming.length + shown.completedTotal;
+  const totalMatches = shown.active.length + shown.upcoming.length + shown.onHold.length + shown.completedTotal;
 
   function onEnter() {
     if (!searching) return;
-    const first = shown.active[0] || shown.upcoming[0] || shown.completed[0];
+    const first = shown.active[0] || shown.upcoming[0] || shown.onHold[0] || shown.completed[0];
     if (totalMatches === 1 && first) router.push(`/projects/${first.id}`);
   }
 
@@ -165,6 +168,33 @@ export default function BoardView({
               </div>
             ))}
             {!upcoming.length && <p style={{ color: "var(--muted)" }}>Nothing upcoming yet.</p>}
+          </div>
+        </section>
+      )}
+
+      {shown.onHold.length > 0 && (
+        <section style={{ marginBottom: 32 }}>
+          <h2 style={{ marginBottom: 4 }}>On Hold ({searching ? `${shown.onHold.length} of ${onHold.length}` : onHold.length})</h2>
+          <p style={{ color: "var(--muted)", fontSize: "0.85rem", marginBottom: 12 }}>Paused jobs we plan to return to. Set one back to Active when work resumes.</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
+            {shown.onHold.map((p) => (
+              <div key={p.id} style={{ position: "relative" }}>
+                <Link href={`/projects/${p.id}`} style={{ ...cardStyle, borderLeft: "4px solid var(--hold, #b7791f)" }}>
+                  <h3 style={{ fontSize: "1rem", paddingRight: 24 }}>
+                    {p.projectNumber && <span style={{ color: "var(--muted)", fontFamily: "var(--font-mono)" }}>{p.projectNumber} · </span>}
+                    {p.name}
+                  </h3>
+                  <div style={{ color: "var(--muted)", fontSize: "0.85rem" }}>{p.location}</div>
+                  <div style={{ marginTop: 8, fontSize: "0.85rem" }}>Completion: {p.endDate || "—"}</div>
+                  {!readOnly && <div style={{ fontSize: "0.85rem" }}>Value: {p.value ? `$${Number(p.value).toLocaleString()}` : "—"}</div>}
+                </Link>
+                {!readOnly && (
+                  <div style={{ position: "absolute", top: 14, right: 14 }}>
+                    <ProjectFormModal project={p} crewList={foremen} />
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </section>
       )}

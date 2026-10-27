@@ -22,8 +22,10 @@ type CrewMember = { id: string; name: string };
 const STATUSES = [
   { value: "upcoming", label: "upcoming" },
   { value: "active", label: "active" },
+  { value: "on_hold", label: "on hold (paused, we'll return to it)" },
   { value: "complete", label: "complete (stays on calendar until billed)" },
   { value: "billed", label: "billed (moves to Completed, off calendar)" },
+  { value: "canceled", label: "canceled (moves to Completed, off calendar)" },
 ];
 const BILLING_TYPES = [
   { value: "lump_sum", label: "Lump Sum / Unit Price" },

@@ -71,6 +71,14 @@ export function computeBar(p: GanttProject): Bar | null {
     if (end) return { start: start || addDays(end, -30), end, cls: "status-complete", estimated: !start };
     return null;
   }
-  // "billed" jobs are finished and invoiced: no bar, so they leave the calendar.
+  // A paused job stays on the calendar in its own color and is never "overdue":
+  // it keeps its place until it is resumed (set back to active).
+  if (p.status === "on_hold") {
+    if (start && end) return { start, end, cls: "status-hold", estimated: false };
+    if (!start && end) return end < today ? { start: end, end: today, cls: "status-hold", estimated: false } : { start: today, end, cls: "status-hold", estimated: false };
+    if (start && !end) return { start, end: addDays(start, 30), cls: "status-hold", estimated: true };
+    return null;
+  }
+  // "billed" and "canceled" jobs are finished or dropped: no bar, so they leave the calendar.
   return null;
 }

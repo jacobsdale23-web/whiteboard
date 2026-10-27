@@ -9,7 +9,7 @@ export default async function CompletedPage() {
   const ws = await getWorkspace();
   const company = await requireCompany();
   const hideValue = !!ws && isSafetyViewer(ws.profile);
-  const rows = await db.select().from(projects).where(and(inArray(projects.status, ["complete", "billed"]), eq(projects.companyId, company.id)));
+  const rows = await db.select().from(projects).where(and(inArray(projects.status, ["complete", "billed", "canceled"]), eq(projects.companyId, company.id)));
   const completed = hideValue ? rows.map((p) => ({ ...p, value: null })) : rows;
 
   return (

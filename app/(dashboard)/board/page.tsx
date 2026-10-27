@@ -29,8 +29,9 @@ export default async function BoardPage() {
 
   const active = allProjects.filter((p) => p.status === "active");
   const upcoming = allProjects.filter((p) => p.status === "upcoming");
+  const onHold = allProjects.filter((p) => p.status === "on_hold");
   const completed = allProjects
-    .filter((p) => p.status === "complete" || p.status === "billed")
+    .filter((p) => p.status === "complete" || p.status === "billed" || p.status === "canceled")
     .sort((a, b) => (b.endDate || "").localeCompare(a.endDate || ""))
     .map((p) => ({ id: p.id, name: p.name, projectNumber: p.projectNumber, location: p.location, customer: p.customer, endDate: p.endDate }));
   // Individual crew workers (e.g. Jackson's T&M roster) stay in the crew
@@ -43,6 +44,7 @@ export default async function BoardPage() {
     <BoardView
       active={active.map(toBoard)}
       upcoming={upcoming.map(toBoard)}
+      onHold={onHold.map(toBoard)}
       completed={completed}
       foremen={foremen.map((c) => ({ id: c.id, name: c.name }))}
       atShop={atShop.map((c) => ({ id: c.id, name: c.name }))}

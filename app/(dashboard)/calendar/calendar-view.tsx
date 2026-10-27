@@ -14,6 +14,7 @@ const BAR_COLORS: Record<string, string> = {
   "status-upcoming": "var(--upcoming)",
   "status-overdue": "var(--danger)",
   "status-complete": "var(--muted)",
+  "status-hold": "var(--hold, #b7791f)",
 };
 
 function startOfDay(d: Date): Date {
@@ -62,7 +63,7 @@ function useItems(projects: GanttProject[]): Item[] {
   return useMemo(() => {
     const items: Item[] = [];
     for (const p of projects) {
-      // Billed jobs have no bar; complete ones stay (grey) until they are billed.
+      // Billed and canceled jobs have no bar; complete ones stay (grey) until they are billed.
       const bar = computeBar(p);
       if (bar) items.push({ project: p, bar });
     }
@@ -406,7 +407,7 @@ function DayView({ items, events, day, onSelect }: { items: Item[]; events: Cale
                 textTransform: "capitalize",
               }}
             >
-              Status: {project.status} · change
+              Status: {project.status.replace("_", " ")} · change
             </button>
           </div>
         );
