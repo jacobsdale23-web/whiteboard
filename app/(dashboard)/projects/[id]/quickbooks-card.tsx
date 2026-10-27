@@ -22,6 +22,8 @@ export default async function QuickBooksCard({ projectNumber, wb }: { projectNum
   const qbProfit = qbIncome - qbCost;
   const qbMargin = qbIncome > 0 ? (qbProfit / qbIncome) * 100 : null;
   const wbProfit = wb.billed === null ? null : wb.billed - wb.cost;
+  // Nothing recorded in White Board yet: show dashes rather than a big "difference".
+  const wbEmpty = wb.billed === null && wb.cost === 0;
   const synced = job.syncedAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Chicago" });
 
   return (
@@ -45,7 +47,7 @@ export default async function QuickBooksCard({ projectNumber, wb }: { projectNum
           </thead>
           <tbody>
             <Row label="Income billed" qb={qbIncome} wb={wb.billed} />
-            <Row label="Job costs" qb={qbCost} wb={wb.cost} />
+            <Row label="Job costs" qb={qbCost} wb={wbEmpty ? null : wb.cost} />
             <Row label="Profit" qb={qbProfit} wb={wbProfit} bold />
           </tbody>
         </table>
