@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { projects } from "@/lib/db/schema";
-import { computeNextProjectNumber } from "@/lib/project-numbers";
+import { QB_NUMBER_RE } from "@/lib/project-numbers";
 import { assertNotSafety } from "@/lib/auth/current-user";
 import { assertCompanyAccess, requireCompany } from "@/lib/auth/company";
 
@@ -32,16 +32,11 @@ export async function saveProject(id: string | null, data: ProjectInput) {
   if (existing) await assertCompanyAccess(existing.companyId);
   const companyId = existing?.companyId ?? company.id;
 
-  // Auto-assign only on the transition into "active" — never for upcoming
-  // work or opportunities — and only for lump-sum/unit-price jobs. T&M
-  // jobs use the client's own task/PO number instead (billing_tasks).
-  let projectNumber = data.projectNumber?.trim() || existing?.projectNumber || null;
-  const justActivated = data.status === "active" && (!existing || existing.status !== "active");
-  if (!projectNumber && justActivated && data.billingType === "lump_sum") {
-    const year = data.startDate ? parseInt(data.startDate.slice(0, 4), 10) : new Date().getFullYear();
-    // Each company numbers its own jobs (26-001, 26-002 ...).
-    const allNumbers = await db.select({ projectNumber: projects.projectNumber }).from(projects).where(eq(projects.companyId, companyId));
-    projectNumber = computeNextProjectNumber(allNumbers.map((r) => r.projectNumber), year);
+  // Project numbers come from QuickBooks (the field clocks in against them), so
+  // White Board never makes one up. A job without one is flagged until it is entered.
+  const projectNumber = data.projectNumber?.trim() || null;
+  if (projectNumber && !QB_NUMBER_RE.test(projectNumber)) {
+    throw new Error("Use the 5-digit project number from QuickBooks (for example 26108).");
   }
 
   const values = {
@@ -72,10 +67,9 @@ export async function saveProject(id: string | null, data: ProjectInput) {
 
 const PROJECT_STATUSES = ["upcoming", "active", "complete", "billed"];
 
-// Status-only change, used from the calendar timeline. Mirrors what saveProject
-// does on a status change: a lump-sum job getting its first "active" status is
-// numbered, and a job marked complete with no completion date gets today's, so
-// its bar still has an end on the timeline.
+// Status-only change, used from the calendar timeline. A job marked complete
+// with no completion date gets today's, so its bar still has an end on the
+// timeline. (Project numbers are never assigned here: they come from QuickBooks.)
 export async function setProjectStatus(id: string, status: string) {
   await assertNotSafety();
   if (!PROJECT_STATUSES.includes(status)) throw new Error("Unknown status.");
@@ -84,11 +78,6 @@ export async function setProjectStatus(id: string, status: string) {
   await assertCompanyAccess(existing.companyId);
 
   const changes: Partial<typeof projects.$inferInsert> = { status };
-  if (status === "active" && existing.status !== "active" && !existing.projectNumber && existing.billingType === "lump_sum") {
-    const year = existing.startDate ? parseInt(existing.startDate.slice(0, 4), 10) : new Date().getFullYear();
-    const allNumbers = await db.select({ projectNumber: projects.projectNumber }).from(projects).where(eq(projects.companyId, existing.companyId));
-    changes.projectNumber = computeNextProjectNumber(allNumbers.map((r) => r.projectNumber), year);
-  }
   if (status === "complete" && !existing.endDate) {
     changes.endDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
   }

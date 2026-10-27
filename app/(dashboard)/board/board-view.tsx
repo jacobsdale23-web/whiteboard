@@ -125,6 +125,7 @@ export default function BoardView({
                   <div style={{ marginTop: 8, fontSize: "0.85rem" }}>Completion: {p.endDate || "—"}</div>
                   {!readOnly && <div style={{ fontSize: "0.85rem" }}>Value: {p.value ? `$${Number(p.value).toLocaleString()}` : "—"}</div>}
                   <div style={{ fontSize: "0.85rem" }}>Crew: {(p.crew || []).join(", ") || "Unassigned"}</div>
+                  {!p.projectNumber && <NoNumberChip />}
                 </Link>
                 {!readOnly && (
                   <div style={{ position: "absolute", top: 14, right: 14 }}>
@@ -147,9 +148,13 @@ export default function BoardView({
             {shown.upcoming.map((p) => (
               <div key={p.id} style={{ position: "relative" }}>
                 <Link href={`/projects/${p.id}`} style={cardStyle}>
-                  <h3 style={{ fontSize: "1rem", paddingRight: 24 }}>{p.name}</h3>
+                  <h3 style={{ fontSize: "1rem", paddingRight: 24 }}>
+                    {p.projectNumber && <span style={{ color: "var(--muted)", fontFamily: "var(--font-mono)" }}>{p.projectNumber} · </span>}
+                    {p.name}
+                  </h3>
                   <div style={{ color: "var(--muted)", fontSize: "0.85rem" }}>{p.location}</div>
                   <div style={{ marginTop: 8, fontSize: "0.85rem" }}>Start: {p.startDate || "TBD"}</div>
+                  {!p.projectNumber && <NoNumberChip />}
                   {!readOnly && <div style={{ fontSize: "0.85rem" }}>Value: {p.value ? `$${Number(p.value).toLocaleString()}` : "—"}</div>}
                 </Link>
                 {!readOnly && (
@@ -202,6 +207,18 @@ export default function BoardView({
         </section>
       )}
     </>
+  );
+}
+
+// Numbers come from QuickBooks; until one is entered the field can't clock in to the job.
+function NoNumberChip() {
+  return (
+    <span
+      title="Enter this job's QuickBooks project number (edit with the pencil)"
+      style={{ display: "inline-block", marginTop: 8, background: "#ffe699", color: "#5c4400", fontSize: "0.68rem", fontWeight: 700, padding: "2px 8px", borderRadius: 20, textTransform: "uppercase" }}
+    >
+      No QuickBooks #
+    </span>
   );
 }
 

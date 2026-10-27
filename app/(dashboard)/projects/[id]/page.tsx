@@ -109,10 +109,16 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             >
               {project.status}
             </span>
-            {project.projectNumber && (
+            {project.projectNumber ? (
               <span style={{ marginLeft: 8, color: "var(--muted)", fontFamily: "var(--font-mono)", fontSize: "0.82rem", fontWeight: 600 }}>
                 #{project.projectNumber}
               </span>
+            ) : (
+              (project.status === "active" || project.status === "upcoming") && (
+                <span style={{ marginLeft: 8, background: "#ffe699", color: "#5c4400", borderRadius: 20, padding: "3px 10px", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase" }}>
+                  No QuickBooks #
+                </span>
+              )
             )}
             <h1 style={{ fontSize: "1.6rem", marginTop: 6 }}>{project.name}</h1>
             {project.customer && <div style={{ color: "var(--ink-soft)", fontWeight: 600 }}>{project.customer}</div>}

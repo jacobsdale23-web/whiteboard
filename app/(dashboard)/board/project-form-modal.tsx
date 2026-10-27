@@ -129,17 +129,22 @@ export default function ProjectFormModal({ project, crewList }: { project?: Proj
                 ))}
               </select>
             </Field>
-            {billingType === "lump_sum" && (
-              <Field label="Project Number">
-                <input
-                  type="text"
-                  name="projectNumber"
-                  placeholder="Auto-assigned when activated"
-                  defaultValue={project?.projectNumber || ""}
-                  style={inputStyle}
-                />
-              </Field>
-            )}
+            <Field label="QuickBooks Project #">
+              <input
+                type="text"
+                name="projectNumber"
+                inputMode="numeric"
+                maxLength={5}
+                pattern="\d{5}"
+                title="The 5-digit project number from QuickBooks, like 26108"
+                placeholder="From QuickBooks, like 26108"
+                defaultValue={project?.projectNumber || ""}
+                style={inputStyle}
+              />
+              <div style={{ color: "var(--muted)", fontSize: "0.74rem", marginTop: 4 }}>
+                Create the project in QuickBooks first, then enter its number here exactly. The field clocks in by this number.
+              </div>
+            </Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <Field label="Start Date">
                 <input type="date" name="startDate" defaultValue={project?.startDate || ""} style={inputStyle} />
