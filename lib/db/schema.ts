@@ -471,6 +471,17 @@ export const planFiles = pgTable("plan_files", {
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
 });
 
+// Documents kept with a project: the original bid, the contract, change orders. Same private bucket as plan_files.
+export const projectFiles = pgTable("project_files", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull(),
+  kind: text("kind").notNull().default("Contract"), // Original bid | Contract | Change order | Other
+  filename: text("filename").notNull(),
+  storageKey: text("storage_key").notNull(),
+  fileSize: numeric("file_size").notNull().default("0"),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+});
+
 // One AI review run over the currently-uploaded plan/spec PDFs. Frozen at
 // generation time like everything else here -- re-running creates a new row
 // rather than overwriting, so a history of reviews survives plan revisions.

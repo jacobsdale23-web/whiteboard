@@ -10,6 +10,7 @@ import LogSection from "./log-section";
 import BudgetSection from "./budget-section";
 import QuickBooksCard from "./quickbooks-card";
 import BidReference from "./bid-reference";
+import ProjectDocuments from "./project-documents";
 import { sortedPayApps, rollupAt } from "@/lib/sov";
 
 // White Board's own billed-to-date (pay apps) and cost (receipts, expenses and
@@ -188,6 +189,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               submittedBy: r.submittedBy,
             }))}
           />
+          <ProjectDocuments projectId={id} />
           <BidReference projectId={id} companyId={project.companyId} />
           </>
         ) : (
