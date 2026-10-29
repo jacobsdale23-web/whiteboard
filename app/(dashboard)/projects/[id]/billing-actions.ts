@@ -198,6 +198,24 @@ export async function acknowledgeWarning(projectId: string, invoiceId: string, k
   revalidatePath(`/projects/${projectId}`);
 }
 
+// Settles several flags at once ("Mark all like this").
+export async function acknowledgeWarnings(projectId: string, invoiceId: string, keys: string[], note: string) {
+  await requireAdmin();
+  const [invoice] = await db
+    .select()
+    .from(tmInvoices)
+    .where(and(eq(tmInvoices.id, invoiceId), eq(tmInvoices.projectId, projectId)));
+  if (!invoice) return;
+  const list = invoice.acknowledged || [];
+  const have = new Set(list.map((a) => a.key));
+  const at = new Date().toISOString();
+  const added = Array.from(new Set(keys))
+    .filter((k) => !have.has(k))
+    .map((key) => ({ key, note: note.trim().slice(0, 300), at }));
+  if (added.length) await db.update(tmInvoices).set({ acknowledged: [...list, ...added] }).where(eq(tmInvoices.id, invoiceId));
+  revalidatePath(`/projects/${projectId}`);
+}
+
 export async function unacknowledgeWarning(projectId: string, invoiceId: string, key: string) {
   await requireAdmin();
   const [invoice] = await db

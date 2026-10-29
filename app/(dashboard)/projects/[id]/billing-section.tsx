@@ -17,9 +17,10 @@ import {
   removeInvoiceLineItem,
   refreshInvoice,
   acknowledgeWarning,
+  acknowledgeWarnings,
   unacknowledgeWarning,
 } from "./billing-actions";
-import { warningKey } from "@/lib/tm-ack";
+import { warningKey, warningKind } from "@/lib/tm-ack";
 
 type BillingRate = { id: string; position: string; hourlyRate: string };
 type BillingTask = {
@@ -362,6 +363,8 @@ function InvoiceCard({ projectId, invoice, tasks }: { projectId: string; invoice
   const errorCount = warnings.filter((w) => w.severity === "error").length;
   const warningCount = warnings.length - errorCount;
   const isDraft = invoice.status === "draft";
+  // Open flags of the same kind (same problem, different people or days), for "Mark all like this".
+  const sameKind = (w: TmWarning) => warnings.filter((x) => warningKind(x) === warningKind(w));
 
   function run(action: () => Promise<{ error?: string } | void>) {
     setMsg("");
@@ -448,6 +451,21 @@ function InvoiceCard({ projectId, invoice, tasks }: { projectId: string; invoice
                         title="This is correct as it is; stop flagging it"
                       >
                         Not a mistake
+                      </button>
+                    )}
+                    {isDraft && sameKind(w).length > 1 && (
+                      <button
+                        disabled={pending}
+                        onClick={() => {
+                          const group = sameKind(w);
+                          const note = window.prompt(`Mark all ${group.length} flags of this kind as not a mistake? Optional note:`, "");
+                          if (note === null) return;
+                          run(() => acknowledgeWarnings(projectId, invoice.id, group.map(warningKey), note));
+                        }}
+                        style={{ ...addBtnStyle, marginLeft: 6, padding: "2px 8px", fontSize: "0.72rem" }}
+                        title="Settles every open flag of the same kind on this invoice (for example, all lines missing a Locusview number)"
+                      >
+                        Mark all {sameKind(w).length} like this
                       </button>
                     )}
                   </li>
