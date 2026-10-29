@@ -250,7 +250,8 @@ function LogForm({
             name="crewHours"
             placeholder="Hours"
             min="0"
-            step="0.25"
+            step="any"
+            inputMode="decimal"
             required
             value={row.hours}
             onChange={(e) => patchRow(row.key, { hours: e.target.value })}
