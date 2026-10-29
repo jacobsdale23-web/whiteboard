@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { qbJobs } from "@/lib/db/schema";
+import { getSessionAndProfile } from "@/lib/auth/current-user";
 
 const money = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
@@ -14,6 +15,9 @@ export type WhiteboardFigures = { billed: number | null; cost: number };
 // Projects page twice a week.
 export default async function QuickBooksCard({ projectNumber, wb }: { projectNumber: string | null; wb: WhiteboardFigures }) {
   if (!projectNumber) return null;
+  // Checked here as well as by the page, so these figures can never render for a non-admin.
+  const current = await getSessionAndProfile();
+  if (current?.profile.role !== "admin") return null;
   const job = await db.query.qbJobs.findFirst({ where: eq(qbJobs.projectNumber, projectNumber) });
   if (!job) return null;
 
