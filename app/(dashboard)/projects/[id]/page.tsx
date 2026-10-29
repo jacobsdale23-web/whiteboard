@@ -9,6 +9,7 @@ import MilestoneSection from "./milestone-section";
 import LogSection from "./log-section";
 import BudgetSection from "./budget-section";
 import QuickBooksCard from "./quickbooks-card";
+import BidReference from "./bid-reference";
 import { sortedPayApps, rollupAt } from "@/lib/sov";
 
 // White Board's own billed-to-date (pay apps) and cost (receipts, expenses and
@@ -166,6 +167,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
       {!readOnly && <div style={{ marginBottom: 20 }}>
         {isAdmin && budgetData ? (
+          <>
           <BudgetSection
             projectId={id}
             contractValue={project.value}
@@ -186,6 +188,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               submittedBy: r.submittedBy,
             }))}
           />
+          <BidReference projectId={id} companyId={project.companyId} />
+          </>
         ) : (
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
             <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase", marginBottom: 10 }}>Budget</h3>
