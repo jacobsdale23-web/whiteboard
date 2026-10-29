@@ -99,7 +99,19 @@ async function computeWarnings(projectId: string, taskNumber: string, periodStar
     (li) => descriptionFor(li, taskLogs)
   );
 
-  return [...validateLineItems(items), ...findCrossCrewOverlaps(items, projectId, otherLogs), ...quality];
+  // A log on this project in the period with no task number is never picked up by the invoice: say so,
+  // so its hours can't be left off by accident.
+  const untagged: StoredWarning[] = periodLogs
+    .filter((l) => l.projectId === projectId && !l.taskNumber)
+    .map((l) => ({
+      severity: "error" as const,
+      type: "missing_data" as const,
+      date: l.date,
+      crewMember: "",
+      message: `The daily log dated ${l.date} has no task number, so none of its hours are on this invoice. If it belongs to task ${taskNumber}, set its task number and regenerate.`,
+    }));
+
+  return [...untagged, ...validateLineItems(items), ...findCrossCrewOverlaps(items, projectId, otherLogs), ...quality];
 }
 
 // Screens a saved invoice again against the current logs and rules, and stores
@@ -127,12 +139,14 @@ export async function generateInvoice(
   billingTaskId: string,
   periodStart: string,
   periodEnd: string
-) {
+): Promise<{ id: string } | { error: string }> {
   await requireAdmin();
-  if (!periodStart || !periodEnd) throw new Error("Pick a start and end date for the billing period.");
+  // Expected problems come back as a result, not a throw: a thrown message is hidden in production and the
+  // person billing only sees an error code.
+  if (!periodStart || !periodEnd) return { error: "Pick a start and end date for the billing period." };
 
   const [task] = await db.select().from(billingTasks).where(eq(billingTasks.id, billingTaskId));
-  if (!task) throw new Error("That billing task no longer exists.");
+  if (!task) return { error: "That billing task no longer exists." };
 
   const [logs, rates] = await Promise.all([
     db.select().from(dailyLogs).where(eq(dailyLogs.projectId, projectId)),
@@ -141,7 +155,14 @@ export async function generateInvoice(
 
   const lineItems = buildInvoiceLineItems(logs, rates, task.taskNumber, periodStart, periodEnd);
   if (!lineItems.length) {
-    throw new Error("No daily log hours found for that task number in the selected period.");
+    const inPeriod = logs.filter((l) => l.date >= periodStart && l.date <= periodEnd);
+    const untagged = inPeriod.filter((l) => !l.taskNumber).map((l) => l.date).sort();
+    const other = Array.from(new Set(inPeriod.filter((l) => l.taskNumber && l.taskNumber !== task.taskNumber).map((l) => l.taskNumber as string)));
+    let why = `No daily log hours found for task ${task.taskNumber} from ${periodStart} to ${periodEnd}.`;
+    if (untagged.length) why += ` ${untagged.length === 1 ? "The log" : "These logs"} dated ${untagged.join(", ")} ${untagged.length === 1 ? "has" : "have"} no task number. Open ${untagged.length === 1 ? "it" : "each"} in Daily Logs (the pencil), set the task number to ${task.taskNumber}, then try again.`;
+    else if (other.length) why += ` Logs in that period are under other task numbers: ${other.join(", ")}.`;
+    else if (!inPeriod.length) why += " There are no daily logs on this project in that period.";
+    return { error: why };
   }
   const total = sumLineItems(lineItems);
   const warnings = await computeWarnings(projectId, task.taskNumber, periodStart, periodEnd, lineItems);
@@ -162,7 +183,7 @@ export async function generateInvoice(
     .returning();
 
   revalidatePath(`/projects/${projectId}`);
-  return invoice.id;
+  return { id: invoice.id };
 }
 
 export async function removeInvoiceLineItem(projectId: string, invoiceId: string, lineIndex: number) {

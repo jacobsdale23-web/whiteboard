@@ -286,8 +286,9 @@ function InvoicesSubsection({
             setError(null);
             startTransition(async () => {
               try {
-                await generateInvoice(projectId, billingTaskId, periodStart, periodEnd);
-                setShowGen(false);
+                const res = await generateInvoice(projectId, billingTaskId, periodStart, periodEnd);
+                if ("error" in res) setError(res.error);
+                else setShowGen(false);
               } catch (err) {
                 setError(err instanceof Error ? err.message : "Couldn't generate that invoice.");
               }
