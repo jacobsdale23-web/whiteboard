@@ -252,6 +252,8 @@ export const tmInvoices = pgTable("tm_invoices", {
       }[]
     >()
     .default([]),
+  // Flags the reviewer marked "not a mistake", keyed by lib/tm-ack.ts warningKey, with an optional note.
+  acknowledged: jsonb("acknowledged").$type<{ key: string; note: string; at: string }[]>().default([]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   approvedAt: timestamp("approved_at"),
 });

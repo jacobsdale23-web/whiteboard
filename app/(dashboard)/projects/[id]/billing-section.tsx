@@ -15,7 +15,11 @@ import {
   exportInvoiceExcel,
   rescreenInvoice,
   removeInvoiceLineItem,
+  refreshInvoice,
+  acknowledgeWarning,
+  unacknowledgeWarning,
 } from "./billing-actions";
+import { warningKey } from "@/lib/tm-ack";
 
 type BillingRate = { id: string; position: string; hourlyRate: string };
 type BillingTask = {
@@ -56,6 +60,7 @@ type TmInvoice = {
   total: string;
   lineItems: TmLineItem[] | null;
   warnings: TmWarning[] | null;
+  acknowledged: { key: string; note: string; at: string }[] | null;
 };
 
 // Admin-only. Never render this component, or pass billing rates / invoice
@@ -262,6 +267,7 @@ function InvoicesSubsection({
 }) {
   const [showGen, setShowGen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   return (
@@ -274,6 +280,7 @@ function InvoicesSubsection({
       }
     >
       {!tasks.length && <Empty>Add a task/PO number above before generating an invoice.</Empty>}
+      {notice && <p style={{ color: "var(--ink-soft)", fontSize: "0.82rem", marginBottom: 10 }}>{notice}</p>}
 
       {showGen && (
         <form
@@ -284,11 +291,15 @@ function InvoicesSubsection({
             const periodStart = String(fd.get("periodStart") || "");
             const periodEnd = String(fd.get("periodEnd") || "");
             setError(null);
+            setNotice(null);
             startTransition(async () => {
               try {
                 const res = await generateInvoice(projectId, billingTaskId, periodStart, periodEnd);
                 if ("error" in res) setError(res.error);
-                else setShowGen(false);
+                else {
+                  setShowGen(false);
+                  if (res.refreshed) setNotice("That period already had a draft, so it was refreshed from the daily logs instead of making a copy.");
+                }
               } catch (err) {
                 setError(err instanceof Error ? err.message : "Couldn't generate that invoice.");
               }
@@ -340,11 +351,29 @@ function InvoicesSubsection({
 
 function InvoiceCard({ projectId, invoice, tasks }: { projectId: string; invoice: TmInvoice; tasks: BillingTask[] }) {
   const [expanded, setExpanded] = useState(false);
-  const [, startTransition] = useTransition();
+  const [msg, setMsg] = useState("");
+  const [pending, startTransition] = useTransition();
   const task = tasks.find((t) => t.id === invoice.billingTaskId);
-  const warnings = invoice.warnings || [];
+  // `warnings` is what is still open; flags marked "not a mistake" are kept apart in `settled`.
+  const allWarnings = invoice.warnings || [];
+  const acks = new Map((invoice.acknowledged || []).map((a) => [a.key, a]));
+  const warnings = allWarnings.filter((w) => !acks.has(warningKey(w)));
+  const settled = allWarnings.filter((w) => acks.has(warningKey(w)));
   const errorCount = warnings.filter((w) => w.severity === "error").length;
   const warningCount = warnings.length - errorCount;
+  const isDraft = invoice.status === "draft";
+
+  function run(action: () => Promise<{ error?: string } | void>) {
+    setMsg("");
+    startTransition(async () => {
+      try {
+        const res = (await action()) as { error?: string } | undefined;
+        if (res && res.error) setMsg(res.error);
+      } catch {
+        setMsg("Something went wrong. Try again, and tell Jacob if it keeps happening.");
+      }
+    });
+  }
 
   async function handleExport() {
     const { filename, base64 } = await exportInvoiceExcel(projectId, invoice.id);
@@ -386,6 +415,7 @@ function InvoiceCard({ projectId, invoice, tasks }: { projectId: string; invoice
               ⚠ {warnings.length} {warnings.length === 1 ? "issue" : "issues"}
             </span>
           )}
+          {!warnings.length && !!settled.length && <span style={flagBadgeStyle}>✓ flags resolved</span>}
           <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>${Number(invoice.total).toLocaleString()}</span>
           <button onClick={() => setExpanded((s) => !s)} style={addBtnStyle}>
             {expanded ? "Hide" : "Review"}
@@ -404,13 +434,58 @@ function InvoiceCard({ projectId, invoice, tasks }: { projectId: string; invoice
               </div>
               <ul style={{ margin: 0, paddingLeft: 18, fontSize: "0.8rem", color: "var(--ink)" }}>
                 {warnings.map((w, i) => (
-                  <li key={i} style={{ marginBottom: 3 }}>
+                  <li key={i} style={{ marginBottom: 6 }}>
                     {w.severity === "error" ? "🛑" : "⚠"} {w.message}
+                    {isDraft && (
+                      <button
+                        disabled={pending}
+                        onClick={() => {
+                          const note = window.prompt("Why is this not a mistake? (optional note)", "");
+                          if (note === null) return;
+                          run(() => acknowledgeWarning(projectId, invoice.id, warningKey(w), note));
+                        }}
+                        style={{ ...addBtnStyle, marginLeft: 8, padding: "2px 8px", fontSize: "0.72rem" }}
+                        title="This is correct as it is; stop flagging it"
+                      >
+                        Not a mistake
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
+              {isDraft && (
+                <div style={{ fontSize: "0.74rem", color: "var(--ink-soft)", marginTop: 6 }}>
+                  Fix a real mistake in the Daily Logs, then press Refresh from daily logs. This invoice updates in place; no new copy is made.
+                </div>
+              )}
             </div>
           )}
+          {!!settled.length && (
+            <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", marginBottom: 12, background: "var(--surface-2)" }}>
+              <div style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", marginBottom: 4, color: "var(--ink-soft)" }}>Marked not a mistake ({settled.length})</div>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: "0.78rem", color: "var(--ink-soft)" }}>
+                {settled.map((w, i) => {
+                  const a = acks.get(warningKey(w));
+                  return (
+                    <li key={i} style={{ marginBottom: 3 }}>
+                      ✓ {w.message}
+                      {a?.note ? <em> — {a.note}</em> : null}
+                      {isDraft && (
+                        <button
+                          disabled={pending}
+                          onClick={() => run(() => unacknowledgeWarning(projectId, invoice.id, warningKey(w)))}
+                          style={{ ...addBtnStyle, marginLeft: 8, padding: "1px 7px", fontSize: "0.7rem" }}
+                        >
+                          Undo
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+          {msg && <p style={{ color: "var(--danger, #c0392b)", fontSize: "0.82rem", marginBottom: 10 }}>{msg}</p>}
           <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
             <input
               type="text"
@@ -419,17 +494,31 @@ function InvoiceCard({ projectId, invoice, tasks }: { projectId: string; invoice
               onBlur={(e) => startTransition(() => setInvoiceNumber(projectId, invoice.id, e.target.value))}
               style={{ ...inputStyle, width: 140 }}
             />
-            {invoice.status === "draft" && (
+            {isDraft && (
               <button
-                onClick={() => startTransition(() => approveInvoice(projectId, invoice.id))}
-                style={primaryBtnStyle}
+                onClick={() => run(() => refreshInvoice(projectId, invoice.id))}
+                disabled={pending}
+                style={secondaryBtnStyle}
+                title="Rebuild this invoice from the current daily logs and rates, in place"
+              >
+                {pending ? "Working…" : "Refresh from daily logs"}
+              </button>
+            )}
+            {isDraft && (
+              <button
+                onClick={() => run(() => approveInvoice(projectId, invoice.id))}
+                disabled={pending || warnings.length > 0}
+                style={{ ...primaryBtnStyle, opacity: warnings.length ? 0.5 : 1, cursor: warnings.length ? "not-allowed" : "pointer" }}
+                title={warnings.length ? "Fix each flag in the daily logs and refresh, or mark it Not a mistake, first" : "Approve this invoice"}
               >
                 Approve
               </button>
             )}
-            <button onClick={() => startTransition(() => rescreenInvoice(projectId, invoice.id))} style={secondaryBtnStyle} title="Check this invoice again against the current daily logs">
-              Re-screen
-            </button>
+            {!isDraft && (
+              <button onClick={() => startTransition(() => rescreenInvoice(projectId, invoice.id))} style={secondaryBtnStyle} title="Check this invoice again against the current daily logs">
+                Re-screen
+              </button>
+            )}
             <button onClick={handleExport} style={secondaryBtnStyle}>
               Export to Excel
             </button>

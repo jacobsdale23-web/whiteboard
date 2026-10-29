@@ -9,6 +9,7 @@ import { cellValue, descriptionFor, screenInvoiceQuality, type QualityField } fr
 import { getSessionAndProfile } from "@/lib/auth/current-user";
 import { buildInvoiceLineItems, sumLineItems, validateLineItems, findCrossCrewOverlaps, type TmLineItem } from "@/lib/tm-billing";
 import { RATE_SCHEDULES, type RateScheduleKey } from "@/lib/rate-schedules";
+import { warningKey } from "@/lib/tm-ack";
 import ExcelJS from "exceljs";
 
 // Real, server-enforced admin check — rates and invoice totals must never
@@ -134,12 +135,89 @@ export async function rescreenInvoice(projectId: string, id: string) {
   revalidatePath(`/projects/${projectId}`);
 }
 
+// Why a task/period has nothing to bill, in words that say what to fix.
+function noHoursMessage(logs: (typeof dailyLogs.$inferSelect)[], taskNumber: string, periodStart: string, periodEnd: string): string {
+  const inPeriod = logs.filter((l) => l.date >= periodStart && l.date <= periodEnd);
+  const untagged = inPeriod.filter((l) => !l.taskNumber).map((l) => l.date).sort();
+  const other = Array.from(new Set(inPeriod.filter((l) => l.taskNumber && l.taskNumber !== taskNumber).map((l) => l.taskNumber as string)));
+  let why = `No daily log hours found for task ${taskNumber} from ${periodStart} to ${periodEnd}.`;
+  if (untagged.length) why += ` ${untagged.length === 1 ? "The log" : "These logs"} dated ${untagged.join(", ")} ${untagged.length === 1 ? "has" : "have"} no task number. Open ${untagged.length === 1 ? "it" : "each"} in Daily Logs (the pencil), set the task number to ${taskNumber}, then try again.`;
+  else if (other.length) why += ` Logs in that period are under other task numbers: ${other.join(", ")}.`;
+  else if (!inPeriod.length) why += " There are no daily logs on this project in that period.";
+  return why;
+}
+
+// Rebuilds a draft's line items, total and flags from the current daily logs and rates, in place. Flags already
+// marked "not a mistake" stay marked if the same flag comes back; ones that no longer apply are dropped.
+async function refreshDraft(invoice: typeof tmInvoices.$inferSelect): Promise<{ error?: string }> {
+  if (invoice.status !== "draft") return { error: "Only a draft can be refreshed. Delete the approved invoice first if it has to be redone." };
+  const [task] = await db.select().from(billingTasks).where(eq(billingTasks.id, invoice.billingTaskId));
+  if (!task) return { error: "That billing task no longer exists." };
+
+  const [logs, rates] = await Promise.all([
+    db.select().from(dailyLogs).where(eq(dailyLogs.projectId, invoice.projectId)),
+    db.select().from(billingRates).where(eq(billingRates.projectId, invoice.projectId)),
+  ]);
+  const lineItems = buildInvoiceLineItems(logs, rates, task.taskNumber, invoice.periodStart, invoice.periodEnd);
+  if (!lineItems.length) return { error: noHoursMessage(logs, task.taskNumber, invoice.periodStart, invoice.periodEnd) };
+
+  const total = sumLineItems(lineItems);
+  const warnings = await computeWarnings(invoice.projectId, task.taskNumber, invoice.periodStart, invoice.periodEnd, lineItems);
+  const stillFlagged = new Set(warnings.map(warningKey));
+  const acknowledged = (invoice.acknowledged || []).filter((a) => stillFlagged.has(a.key));
+  await db.update(tmInvoices).set({ lineItems, total: total as never, warnings, acknowledged }).where(eq(tmInvoices.id, invoice.id));
+  return {};
+}
+
+export async function refreshInvoice(projectId: string, id: string): Promise<{ error?: string }> {
+  await requireAdmin();
+  const [invoice] = await db
+    .select()
+    .from(tmInvoices)
+    .where(and(eq(tmInvoices.id, id), eq(tmInvoices.projectId, projectId)));
+  if (!invoice) return { error: "Invoice not found." };
+  const res = await refreshDraft(invoice);
+  revalidatePath(`/projects/${projectId}`);
+  return res;
+}
+
+export async function acknowledgeWarning(projectId: string, invoiceId: string, key: string, note: string) {
+  await requireAdmin();
+  const [invoice] = await db
+    .select()
+    .from(tmInvoices)
+    .where(and(eq(tmInvoices.id, invoiceId), eq(tmInvoices.projectId, projectId)));
+  if (!invoice) return;
+  const list = invoice.acknowledged || [];
+  if (!list.some((a) => a.key === key)) {
+    await db
+      .update(tmInvoices)
+      .set({ acknowledged: [...list, { key, note: note.trim().slice(0, 300), at: new Date().toISOString() }] })
+      .where(eq(tmInvoices.id, invoiceId));
+  }
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function unacknowledgeWarning(projectId: string, invoiceId: string, key: string) {
+  await requireAdmin();
+  const [invoice] = await db
+    .select()
+    .from(tmInvoices)
+    .where(and(eq(tmInvoices.id, invoiceId), eq(tmInvoices.projectId, projectId)));
+  if (!invoice) return;
+  await db
+    .update(tmInvoices)
+    .set({ acknowledged: (invoice.acknowledged || []).filter((a) => a.key !== key) })
+    .where(eq(tmInvoices.id, invoiceId));
+  revalidatePath(`/projects/${projectId}`);
+}
+
 export async function generateInvoice(
   projectId: string,
   billingTaskId: string,
   periodStart: string,
   periodEnd: string
-): Promise<{ id: string } | { error: string }> {
+): Promise<{ id: string; refreshed?: boolean } | { error: string }> {
   await requireAdmin();
   // Expected problems come back as a result, not a throw: a thrown message is hidden in production and the
   // person billing only sees an error code.
@@ -148,22 +226,35 @@ export async function generateInvoice(
   const [task] = await db.select().from(billingTasks).where(eq(billingTasks.id, billingTaskId));
   if (!task) return { error: "That billing task no longer exists." };
 
+  // Never make a second copy of an invoice: the same period refreshes the existing draft, and any other
+  // overlap would bill the same hours twice.
+  const existing = await db
+    .select()
+    .from(tmInvoices)
+    .where(and(eq(tmInvoices.projectId, projectId), eq(tmInvoices.billingTaskId, billingTaskId)));
+  const overlapping = existing.filter((e) => e.periodStart <= periodEnd && periodStart <= e.periodEnd);
+  const sameDraft = overlapping.find((e) => e.status === "draft" && e.periodStart === periodStart && e.periodEnd === periodEnd);
+  if (sameDraft) {
+    const res = await refreshDraft(sameDraft);
+    revalidatePath(`/projects/${projectId}`);
+    return res.error ? { error: res.error } : { id: sameDraft.id, refreshed: true };
+  }
+  if (overlapping.length) {
+    const o = overlapping[0];
+    return {
+      error: `This task already has ${o.status === "approved" ? "an approved" : "a draft"} invoice for ${o.periodStart} to ${o.periodEnd}, which overlaps those dates, so the same hours would be billed twice. ${
+        o.status === "draft" ? "Open that draft and use Refresh from daily logs" : "Delete it first if it has to be redone"
+      }, or pick dates that don't overlap.`,
+    };
+  }
+
   const [logs, rates] = await Promise.all([
     db.select().from(dailyLogs).where(eq(dailyLogs.projectId, projectId)),
     db.select().from(billingRates).where(eq(billingRates.projectId, projectId)),
   ]);
 
   const lineItems = buildInvoiceLineItems(logs, rates, task.taskNumber, periodStart, periodEnd);
-  if (!lineItems.length) {
-    const inPeriod = logs.filter((l) => l.date >= periodStart && l.date <= periodEnd);
-    const untagged = inPeriod.filter((l) => !l.taskNumber).map((l) => l.date).sort();
-    const other = Array.from(new Set(inPeriod.filter((l) => l.taskNumber && l.taskNumber !== task.taskNumber).map((l) => l.taskNumber as string)));
-    let why = `No daily log hours found for task ${task.taskNumber} from ${periodStart} to ${periodEnd}.`;
-    if (untagged.length) why += ` ${untagged.length === 1 ? "The log" : "These logs"} dated ${untagged.join(", ")} ${untagged.length === 1 ? "has" : "have"} no task number. Open ${untagged.length === 1 ? "it" : "each"} in Daily Logs (the pencil), set the task number to ${task.taskNumber}, then try again.`;
-    else if (other.length) why += ` Logs in that period are under other task numbers: ${other.join(", ")}.`;
-    else if (!inPeriod.length) why += " There are no daily logs on this project in that period.";
-    return { error: why };
-  }
+  if (!lineItems.length) return { error: noHoursMessage(logs, task.taskNumber, periodStart, periodEnd) };
   const total = sumLineItems(lineItems);
   const warnings = await computeWarnings(projectId, task.taskNumber, periodStart, periodEnd, lineItems);
 
@@ -206,13 +297,29 @@ export async function removeInvoiceLineItem(projectId: string, invoiceId: string
   revalidatePath(`/projects/${projectId}`);
 }
 
-export async function approveInvoice(projectId: string, id: string) {
+// An invoice can only be approved once every flag on it has been fixed or marked "not a mistake".
+export async function approveInvoice(projectId: string, id: string): Promise<{ error?: string }> {
   await requireAdmin();
+  const [invoice] = await db
+    .select()
+    .from(tmInvoices)
+    .where(and(eq(tmInvoices.id, id), eq(tmInvoices.projectId, projectId)));
+  if (!invoice) return { error: "Invoice not found." };
+
+  const warnings = await rescreen(invoice);
+  const acknowledged = new Set((invoice.acknowledged || []).map((a) => a.key));
+  const open = warnings.filter((w) => !acknowledged.has(warningKey(w)));
+  if (open.length) {
+    revalidatePath(`/projects/${projectId}`);
+    return { error: `${open.length} flagged item${open.length === 1 ? "" : "s"} still need${open.length === 1 ? "s" : ""} to be fixed in the daily logs (then Refresh from daily logs) or marked "Not a mistake" before this can be approved.` };
+  }
+
   await db
     .update(tmInvoices)
     .set({ status: "approved", approvedAt: new Date() })
     .where(and(eq(tmInvoices.id, id), eq(tmInvoices.projectId, projectId)));
   revalidatePath(`/projects/${projectId}`);
+  return {};
 }
 
 export async function deleteTmInvoice(projectId: string, id: string) {
@@ -253,8 +360,10 @@ export async function exportInvoiceExcel(projectId: string, id: string): Promise
     .sort((a, b) => a.date.localeCompare(b.date) || a.leakNumber.localeCompare(b.leakNumber));
 
   // Screen again at export time so the file reflects the current rules and logs.
-  const warnings = await rescreen(invoice);
-  const touches = (w: (typeof warnings)[number], li: { crewMember: string; date: string }) =>
+  const acknowledged = new Set((invoice.acknowledged || []).map((a) => a.key));
+  // Flags marked "not a mistake" are settled, so they don't show on the file.
+  const warnings = (await rescreen(invoice)).filter((w) => !acknowledged.has(warningKey(w)));
+  const touches =(w: (typeof warnings)[number], li: { crewMember: string; date: string }) =>
     w.cells ? w.cells.some((c) => c.crewMember === li.crewMember && c.date === li.date) : w.crewMember === li.crewMember && w.date === li.date;
   const flagsFor = (li: { crewMember: string; date: string }) =>
     warnings
