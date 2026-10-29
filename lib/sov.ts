@@ -74,13 +74,16 @@ export function rollupAt(items: SovItemRow[], entries: SovEntryRow[], payAppsOrd
   const retainagePct = (Number(payAppsOrdered[index].retainagePercent) || 0) / 100;
   const retainage = totalCompleted * retainagePct;
   const amountEligible = totalCompleted - retainage;
-  let prevEligible = 0;
-  if (index > 0) {
-    let prevCompleted = 0;
-    for (const item of items) prevCompleted += itemStatsAt(item, entries, payAppsOrdered, index - 1).totalCompleted;
-    const prevRetainagePct = (Number(payAppsOrdered[index - 1].retainagePercent) || 0) / 100;
-    prevEligible = prevCompleted - prevCompleted * prevRetainagePct;
+  // Work before the first pay app in this system (baselineQty) was billed on earlier applications, so it counts as previously billed.
+  let prevCompleted = 0;
+  for (const item of items) {
+    prevCompleted +=
+      index > 0
+        ? itemStatsAt(item, entries, payAppsOrdered, index - 1).totalCompleted
+        : (Number(item.baselineQty) || 0) * (Number(item.unitPrice) || 0);
   }
+  const prevRetainagePct = (Number(payAppsOrdered[Math.max(index - 1, 0)].retainagePercent) || 0) / 100;
+  const prevEligible = prevCompleted - prevCompleted * prevRetainagePct;
   return {
     contractPrice,
     totalCompleted,
