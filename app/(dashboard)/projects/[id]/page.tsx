@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { projects, milestones, dailyLogs, lineItems, expenses, invoices, payApps, sovItems, sovEntries, billingRates, billingTasks, tmInvoices, jsaForms, leakNumbers, receipts } from "@/lib/db/schema";
+import { projects, milestones, dailyLogs, lineItems, expenses, invoices, payApps, sovItems, sovEntries, billingRates, billingTasks, tmInvoices, jsaForms, leakNumbers, receipts, omReports } from "@/lib/db/schema";
 import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
 import { canAccessCompany, getWorkspace, switchCompanyUrl } from "@/lib/auth/company";
 import MilestoneSection from "./milestone-section";
@@ -11,6 +11,7 @@ import BudgetSection from "./budget-section";
 import QuickBooksCard from "./quickbooks-card";
 import BidReference from "./bid-reference";
 import ProjectDocuments from "./project-documents";
+import OmReportSection from "./om-report-section";
 import { sortedPayApps, rollupAt } from "@/lib/sov";
 
 // White Board's own billed-to-date (pay apps) and cost (receipts, expenses and
@@ -50,13 +51,17 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const people = await getPeople(project.companyId);
   const isTm = project.billingType === "tm";
 
-  const [projectMilestones, projectLogs, projectLineItems, projectJsas, projectLeakNumbers, projectTaskNumbers] = await Promise.all([
+  // O&M crews fill out a field report per job (the sections depend on the kind of job).
+  const isOm = project.companyId === "om";
+
+  const [projectMilestones, projectLogs, projectLineItems, projectJsas, projectLeakNumbers, projectTaskNumbers, projectOmReports] = await Promise.all([
     db.select().from(milestones).where(eq(milestones.projectId, id)),
     db.select().from(dailyLogs).where(eq(dailyLogs.projectId, id)),
     db.select().from(lineItems).where(eq(lineItems.projectId, id)),
     db.select().from(jsaForms).where(eq(jsaForms.projectId, id)),
     db.select().from(leakNumbers).where(eq(leakNumbers.projectId, id)),
     db.select({ taskNumber: billingTasks.taskNumber }).from(billingTasks).where(eq(billingTasks.projectId, id)),
+    isOm ? db.select().from(omReports).where(eq(omReports.projectId, id)) : Promise.resolve([] as typeof omReports.$inferSelect[]),
   ]);
 
   let budgetData: {
@@ -229,6 +234,31 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             <EquipmentSection projectId={id} />
           </div>
         </>
+      )}
+
+      {isOm && (
+        <div style={{ marginBottom: 20 }}>
+          <OmReportSection
+            projectId={id}
+            reports={projectOmReports.map((r) => ({
+              id: r.id,
+              date: r.date,
+              jobType: r.jobType,
+              extras: r.extras || [],
+              data: r.data || {},
+              photos: r.photos || [],
+              technician: r.technician,
+              signature: r.signature,
+              submittedBy: r.submittedBy,
+              editedAt: r.editedAt ? r.editedAt.toISOString() : null,
+              editedBy: r.editedBy,
+            }))}
+            isAdmin={isAdmin}
+            readOnly={readOnly}
+            people={people.names}
+            defaultAddress={project.location || ""}
+          />
+        </div>
       )}
 
       <LogSection

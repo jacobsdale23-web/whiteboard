@@ -482,6 +482,24 @@ export const projectFiles = pgTable("project_files", {
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
 });
 
+// O&M field report: one per job a crew does, with only the sections that kind of job needs (see lib/om-report.ts).
+// `data` holds the answers by field key; photos are private-bucket keys with a caption.
+export const omReports = pgTable("om_reports", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull(),
+  date: text("date").notNull(),
+  jobType: text("job_type").notNull(), // leak | service | meter | riser | other
+  extras: jsonb("extras").$type<string[]>().default([]), // sections added beyond the job type's own
+  data: jsonb("data").$type<Record<string, string | string[] | Record<string, string>[]>>().default({}),
+  photos: jsonb("photos").$type<{ key: string; caption: string }[]>().default([]),
+  technician: text("technician"),
+  signature: text("signature"), // PNG data URL drawn on the phone
+  submittedBy: text("submitted_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  editedAt: timestamp("edited_at"),
+  editedBy: text("edited_by"),
+});
+
 // One AI review run over the currently-uploaded plan/spec PDFs. Frozen at
 // generation time like everything else here -- re-running creates a new row
 // rather than overwriting, so a history of reviews survives plan revisions.
