@@ -3,7 +3,8 @@
 //
 // Input: the JSON from the connector's qbo_sales_get_estimates (an object with a `data` array, or the array itself).
 // A quote is attached only when the match is certain: the estimate's customer is a QuickBooks job named "NNNNN - ..."
-// and White Board has that job number. A customer-name match alone is never attached (it can pair a quote with the
+// and White Board has that job number. (Many quotes are never awarded, so unmatched quotes are simply left alone.)
+// A job whose value equals the quote total, or a customer-name match alone, is never attached (it can pair a quote with the
 // wrong job); recent ones with at most three candidate jobs are listed as suggestions for a person to confirm.
 // Estimates already attached are never touched except to refresh their QuickBooks status; a changed total is
 // reported, not overwritten.
@@ -58,6 +59,7 @@ await client.connect();
 const projects = (
   await client.query(
     `select p.id, p.project_number, p.name, p.customer, p.status, p.billing_type,
+            p.value,
             (select count(*) from sov_items s where s.project_id = p.id)::int sov,
             (select count(*) from pay_apps a where a.project_id = p.id)::int apps
        from projects p where p.company_id = $1`,
@@ -106,6 +108,19 @@ for (const e of open) {
     const p = projects.find((x) => x.project_number === m[1]);
     if (p && p.billing_type !== "tm") plan.attach.push({ e, p, why: `customer is QuickBooks job ${m[1]}` });
     continue; // a numbered job White Board doesn't have is reported by the project comparison, not here
+  }
+  // 1b. The job's value in White Board equals the quote total, for the same customer, and nothing else competes for
+  //     either (one such job, one such open quote). A deliberate value that matches to the cent is a safe signal.
+  {
+    const key = norm(e.customer);
+    const byValue = projects.filter((p) => p.billing_type !== "tm" && p.value != null && Math.abs(Number(p.value) - e.total) < 0.01 && norm(p.customer) === key && !hasQuote.has(p.id));
+    const rivals = open.filter((o) => o.number !== e.number && Math.abs(o.total - e.total) < 0.01 && norm(o.customer) === key);
+    // Only a suggestion: a matching dollar amount can be a coincidence (a 6" poly tap quote matched a 2" tap job at
+    // $5,600), so a person confirms before it is attached.
+    if (byValue.length === 1 && !rivals.length) {
+      plan.ambiguous.push({ e, jobs: byValue });
+      continue;
+    }
   }
   // 2. Same customer only: NOT safe to attach by itself (a customer's quotes and jobs rarely pair up one to one, and a
   //    guess would put the wrong scope on a job). Suggest it when the candidates are few and the quote is recent.
