@@ -262,6 +262,10 @@ export const tmInvoices = pgTable("tm_invoices", {
   acknowledged: jsonb("acknowledged").$type<{ key: string; note: string; at: string }[]>().default([]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   approvedAt: timestamp("approved_at"),
+  // Set once the approved invoice has been sent to QuickBooks (the invoice there is the one that goes to the customer).
+  qbInvoiceId: text("qb_invoice_id"),
+  qbSentAt: timestamp("qb_sent_at"),
+  qbSentBy: text("qb_sent_by"),
 });
 
 // Public, price-free copy of each schedule-of-values line item, so field
@@ -521,6 +525,20 @@ export const projectQuotes = pgTable("project_quotes", {
   billedAmount: numeric("billed_amount"),
   billedBy: text("billed_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// The QuickBooks Online connection for a company (one QuickBooks file per company), made once from the app by an admin
+// ("Connect QuickBooks"). Tokens are stored encrypted (lib/quickbooks.ts) and refreshed as they are used.
+export const qbConnections = pgTable("qb_connections", {
+  companyId: text("company_id").primaryKey(),
+  realmId: text("realm_id").notNull(),
+  companyName: text("company_name"),
+  accessToken: text("access_token").notNull(), // encrypted
+  refreshToken: text("refresh_token").notNull(), // encrypted
+  accessExpiresAt: timestamp("access_expires_at").notNull(),
+  refreshExpiresAt: timestamp("refresh_expires_at").notNull(),
+  connectedBy: text("connected_by"),
+  connectedAt: timestamp("connected_at").defaultNow().notNull(),
 });
 
 // QuickBooks invoices, copied by the twice-weekly QuickBooks check so a job can list what was billed. Read-only

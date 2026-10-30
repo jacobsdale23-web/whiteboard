@@ -20,6 +20,10 @@ import {
   acknowledgeWarnings,
   unacknowledgeWarning,
 } from "./billing-actions";
+import { sendInvoiceToQuickBooks, disconnectQuickBooks } from "./quickbooks-actions";
+
+// Whether White Board can send invoices to this company's QuickBooks.
+export type QbStatus = { configured: boolean; connected: boolean; companyName: string | null };
 import { warningKey, warningKind } from "@/lib/tm-ack";
 
 type BillingRate = { id: string; position: string; hourlyRate: string };
@@ -62,6 +66,7 @@ type TmInvoice = {
   lineItems: TmLineItem[] | null;
   warnings: TmWarning[] | null;
   acknowledged: { key: string; note: string; at: string }[] | null;
+  qbInvoiceId: string | null;
 };
 
 // Admin-only. Never render this component, or pass billing rates / invoice
@@ -72,11 +77,13 @@ export default function BillingSection({
   billingRates,
   billingTasks,
   tmInvoices,
+  qb,
 }: {
   projectId: string;
   billingRates: BillingRate[];
   billingTasks: BillingTask[];
   tmInvoices: TmInvoice[];
+  qb: QbStatus;
 }) {
   return (
     <div style={cardStyle}>
@@ -87,7 +94,7 @@ export default function BillingSection({
 
       <RatesSubsection projectId={projectId} rates={billingRates} />
       <TasksSubsection projectId={projectId} tasks={billingTasks} />
-      <InvoicesSubsection projectId={projectId} tasks={billingTasks} invoices={tmInvoices} />
+      <InvoicesSubsection projectId={projectId} tasks={billingTasks} invoices={tmInvoices} qb={qb} />
     </div>
   );
 }
@@ -261,10 +268,12 @@ function InvoicesSubsection({
   projectId,
   tasks,
   invoices,
+  qb,
 }: {
   projectId: string;
   tasks: BillingTask[];
   invoices: TmInvoice[];
+  qb: QbStatus;
 }) {
   const [showGen, setShowGen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -342,7 +351,7 @@ function InvoicesSubsection({
         invoices
           .slice()
           .sort((a, b) => b.periodEnd.localeCompare(a.periodEnd))
-          .map((inv) => <InvoiceCard key={inv.id} projectId={projectId} invoice={inv} tasks={tasks} />)
+          .map((inv) => <InvoiceCard key={inv.id} projectId={projectId} invoice={inv} tasks={tasks} qb={qb} />)
       ) : (
         <Empty>No invoices generated yet.</Empty>
       )}
@@ -350,9 +359,10 @@ function InvoicesSubsection({
   );
 }
 
-function InvoiceCard({ projectId, invoice, tasks }: { projectId: string; invoice: TmInvoice; tasks: BillingTask[] }) {
+function InvoiceCard({ projectId, invoice, tasks, qb }: { projectId: string; invoice: TmInvoice; tasks: BillingTask[]; qb: QbStatus }) {
   const [expanded, setExpanded] = useState(false);
   const [msg, setMsg] = useState("");
+  const [qbNote, setQbNote] = useState("");
   const [pending, startTransition] = useTransition();
   const task = tasks.find((t) => t.id === invoice.billingTaskId);
   // `warnings` is what is still open; flags marked "not a mistake" are kept apart in `settled`.
@@ -504,6 +514,22 @@ function InvoiceCard({ projectId, invoice, tasks }: { projectId: string; invoice
             </div>
           )}
           {msg && <p style={{ color: "var(--danger, #c0392b)", fontSize: "0.82rem", marginBottom: 10 }}>{msg}</p>}
+          {qbNote && <p style={{ color: "var(--ink-soft)", fontSize: "0.82rem", marginBottom: 10 }}>{qbNote}</p>}
+          {!isDraft && qb.connected && (
+            <p style={{ fontSize: "0.72rem", color: "var(--muted)", marginBottom: 8 }}>
+              QuickBooks: {qb.companyName || "connected"} ·{" "}
+              <button
+                onClick={() => {
+                  if (confirm("Disconnect QuickBooks from White Board? Invoices already sent stay in QuickBooks.")) startTransition(async () => {
+                      await disconnectQuickBooks(projectId);
+                    });
+                }}
+                style={{ background: "none", border: "none", padding: 0, color: "inherit", textDecoration: "underline", cursor: "pointer", fontSize: "inherit" }}
+              >
+                Disconnect
+              </button>
+            </p>
+          )}
           <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
             <input
               type="text"
@@ -536,6 +562,37 @@ function InvoiceCard({ projectId, invoice, tasks }: { projectId: string; invoice
               <button onClick={() => startTransition(() => rescreenInvoice(projectId, invoice.id))} style={secondaryBtnStyle} title="Check this invoice again against the current daily logs">
                 Re-screen
               </button>
+            )}
+            {!isDraft && invoice.qbInvoiceId && (
+              <a href={`https://qbo.intuit.com/app/invoice?txnId=${encodeURIComponent(invoice.qbInvoiceId)}`} target="_blank" rel="noreferrer" style={{ ...secondaryBtnStyle, textDecoration: "none", display: "inline-block" }}>
+                ✓ In QuickBooks{invoice.invoiceNumber ? ` #${invoice.invoiceNumber}` : ""} ↗
+              </a>
+            )}
+            {!isDraft && !invoice.qbInvoiceId && qb.connected && (
+              <button
+                disabled={pending}
+                onClick={() => {
+                  if (!confirm(`Create this invoice in QuickBooks${qb.companyName ? ` (${qb.companyName})` : ""} for $${Number(invoice.total).toLocaleString()}? It is saved there, not emailed.`)) return;
+                  setQbNote("");
+                  run(async () => {
+                    const res = await sendInvoiceToQuickBooks(projectId, invoice.id);
+                    if (res.note) setQbNote(res.note);
+                    return res;
+                  });
+                }}
+                style={primaryBtnStyle}
+                title="Creates this invoice in QuickBooks with the Per Man / Per Welder lines and attaches the Excel backup"
+              >
+                {pending ? "Sending…" : "Send to QuickBooks"}
+              </button>
+            )}
+            {!isDraft && !invoice.qbInvoiceId && !qb.connected && qb.configured && (
+              <a href={`/api/quickbooks/connect?returnTo=${encodeURIComponent(`/projects/${projectId}`)}`} style={{ ...primaryBtnStyle, textDecoration: "none", display: "inline-block" }} title="One-time sign-in so White Board can create invoices in QuickBooks">
+                Connect QuickBooks
+              </a>
+            )}
+            {!isDraft && !invoice.qbInvoiceId && !qb.configured && (
+              <span style={{ fontSize: "0.74rem", color: "var(--muted)", alignSelf: "center" }}>QuickBooks isn&apos;t set up for White Board yet.</span>
             )}
             <button onClick={handleExport} style={secondaryBtnStyle}>
               Export to Excel

@@ -30,7 +30,8 @@ function whiteboardFigures(b: {
   const cost = [...b.expenses, ...b.invoices, ...b.receipts].reduce((sum, x) => sum + Number(x.amount || 0), 0);
   return { billed: roll ? roll.totalCompleted : null, cost };
 }
-import BillingSection from "./billing-section";
+import BillingSection, { type QbStatus } from "./billing-section";
+import { getConnection, qbConfig } from "@/lib/quickbooks";
 import JsaSection from "./jsa-section";
 import EquipmentSection from "./equipment-section";
 import ReceiptSection from "./receipt-section";
@@ -86,6 +87,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     billingTasks: typeof billingTasks.$inferSelect[];
     tmInvoices: typeof tmInvoices.$inferSelect[];
   } | null = null;
+  let qbStatus: QbStatus = { configured: false, connected: false, companyName: null };
   if (isAdmin) {
     const [projectExpenses, projectInvoices, projectPayApps, projectSovItems, projectSovEntries, projectReceipts] = await Promise.all([
       db.select().from(expenses).where(eq(expenses.projectId, id)),
@@ -105,6 +107,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     };
 
     if (isTm) {
+      const conn = await getConnection(project.companyId);
+      qbStatus = { configured: qbConfig().configured, connected: !!conn, companyName: conn?.companyName ?? null };
       const [projectBillingRates, projectBillingTasks, projectTmInvoices] = await Promise.all([
         db.select().from(billingRates).where(eq(billingRates.projectId, id)),
         db.select().from(billingTasks).where(eq(billingTasks.projectId, id)),
@@ -252,6 +256,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             billingRates={billingData.billingRates}
             billingTasks={billingData.billingTasks}
             tmInvoices={billingData.tmInvoices}
+            qb={qbStatus}
           />
         </div>
       )}
