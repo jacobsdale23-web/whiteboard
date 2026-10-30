@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { qbJobs } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
@@ -12,13 +12,24 @@ export type WhiteboardFigures = { billed: number | null; cost: number };
 
 // What QuickBooks shows for this job's project number, next to White Board's
 // numbers. Admin-only, read-only: the QuickBooks figures are copied from its
-// Projects page twice a week.
-export default async function QuickBooksCard({ projectNumber, wb }: { projectNumber: string | null; wb: WhiteboardFigures }) {
-  if (!projectNumber) return null;
+// Projects page. Each company has its own QuickBooks, so the lookup is by company;
+// a QuickBooks project with no number is matched by name.
+export default async function QuickBooksCard({
+  companyId,
+  projectNumber,
+  projectName,
+  wb,
+}: {
+  companyId: string;
+  projectNumber: string | null;
+  projectName: string;
+  wb: WhiteboardFigures;
+}) {
+  const key = projectNumber || projectName;
   // Checked here as well as by the page, so these figures can never render for a non-admin.
   const current = await getSessionAndProfile();
   if (current?.profile.role !== "admin") return null;
-  const job = await db.query.qbJobs.findFirst({ where: eq(qbJobs.projectNumber, projectNumber) });
+  const job = await db.query.qbJobs.findFirst({ where: and(eq(qbJobs.companyId, companyId), eq(qbJobs.projectNumber, key)) });
   if (!job) return null;
 
   const qbIncome = Number(job.income);
@@ -33,7 +44,7 @@ export default async function QuickBooksCard({ projectNumber, wb }: { projectNum
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "18px 20px", marginBottom: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-        <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase" }}>QuickBooks · {job.projectNumber}</h3>
+        <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase" }}>QuickBooks{projectNumber ? ` · ${job.projectNumber}` : ""}</h3>
         <span style={{ color: "var(--muted)", fontSize: "0.78rem" }}>
           {job.status ? `${job.status} in QuickBooks · ` : ""}synced {synced}
         </span>

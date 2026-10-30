@@ -351,19 +351,26 @@ export const sovEntries = pgTable("sov_entries", {
 // Per-job money totals copied from the QuickBooks Projects page (read-only in
 // White Board; refreshed by the Monday/Friday QuickBooks sync). Keyed by the
 // QuickBooks project number, so several White Board projects that share one
-// number (like the 26046 lots) all see the same job.
-export const qbJobs = pgTable("qb_jobs", {
-  projectNumber: text("project_number").primaryKey(),
-  name: text("name").notNull(),
-  customer: text("customer"),
-  status: text("status"), // QuickBooks: In progress | Completed | Canceled | Not started
-  startDate: text("start_date"),
-  endDate: text("end_date"),
-  income: numeric("income").notNull().default("0"),
-  cost: numeric("cost").notNull().default("0"),
-  hours: numeric("hours"),
-  syncedAt: timestamp("synced_at").defaultNow().notNull(),
-});
+// number (like the 26046 lots) all see the same job. Each company has its own
+// QuickBooks file, and O&M reuses Feliciana's job numbers, so the key includes
+// the company. QuickBooks projects with no number are keyed by their name.
+export const qbJobs = pgTable(
+  "qb_jobs",
+  {
+    companyId: text("company_id").notNull().default("fwi"),
+    projectNumber: text("project_number").notNull(),
+    name: text("name").notNull(),
+    customer: text("customer"),
+    status: text("status"), // QuickBooks: In progress | Completed | Canceled | Not started
+    startDate: text("start_date"),
+    endDate: text("end_date"),
+    income: numeric("income").notNull().default("0"),
+    cost: numeric("cost").notNull().default("0"),
+    hours: numeric("hours"),
+    syncedAt: timestamp("synced_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.companyId, t.projectNumber] })]
+);
 
 export const opportunities = pgTable("opportunities", {
   id: text("id").primaryKey(),

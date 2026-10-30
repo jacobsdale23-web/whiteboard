@@ -168,7 +168,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       </div>
 
       {isAdmin && !readOnly && budgetData && (
-        <QuickBooksCard projectNumber={project.projectNumber} wb={whiteboardFigures(budgetData)} />
+        <QuickBooksCard companyId={project.companyId} projectNumber={project.projectNumber} projectName={project.name} wb={whiteboardFigures(budgetData)} />
       )}
 
       {!readOnly && <div style={{ marginBottom: 20 }}>

@@ -1,7 +1,9 @@
 // Read-only: compares QuickBooks project numbers with White Board projects.
 // Input file: one line per QuickBooks project, "number|name|customer[|startDate]".
-// Run: node --env-file=.env.local scripts/compare-qb-projects.mjs <file> [yearPrefix]
+// Run: node --env-file=.env.local scripts/compare-qb-projects.mjs <file> [yearPrefix] [companyId]
 // yearPrefix is the two-digit year to report on (default: current year, e.g. 26).
+// companyId is whose QuickBooks the file came from (default fwi): O&M reuses Feliciana's job numbers,
+// so each company's file is compared only with that company's White Board projects.
 import fs from "node:fs";
 import pg from "pg";
 
@@ -34,7 +36,8 @@ const INTERNAL = (q) => /000$/.test(q.num) || /^\d{2}[A-Za-z]+$/.test(q.num);
 
 const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
 await client.connect();
-const wb = (await client.query("select id, company_id, name, project_number, status, customer, start_date from projects")).rows;
+const companyId = process.argv[4] || "fwi";
+const wb = (await client.query("select id, company_id, name, project_number, status, customer, start_date from projects where company_id = $1", [companyId])).rows;
 await client.end();
 
 const byNum = new Map();
