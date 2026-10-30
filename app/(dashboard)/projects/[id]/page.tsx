@@ -87,8 +87,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     billingTasks: typeof billingTasks.$inferSelect[];
     tmInvoices: typeof tmInvoices.$inferSelect[];
   } | null = null;
-  let qbStatus: QbStatus = { configured: false, connected: false, companyName: null };
+  let qbStatus: QbStatus = { configured: false, connected: false, companyName: null, realmId: null };
   if (isAdmin) {
+    const conn = await getConnection(project.companyId);
+    qbStatus = { configured: qbConfig().configured, connected: !!conn, companyName: conn?.companyName ?? null, realmId: conn?.realmId ?? null };
     const [projectExpenses, projectInvoices, projectPayApps, projectSovItems, projectSovEntries, projectReceipts] = await Promise.all([
       db.select().from(expenses).where(eq(expenses.projectId, id)),
       db.select().from(invoices).where(eq(invoices.projectId, id)),
@@ -107,8 +109,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     };
 
     if (isTm) {
-      const conn = await getConnection(project.companyId);
-      qbStatus = { configured: qbConfig().configured, connected: !!conn, companyName: conn?.companyName ?? null };
       const [projectBillingRates, projectBillingTasks, projectTmInvoices] = await Promise.all([
         db.select().from(billingRates).where(eq(billingRates.projectId, id)),
         db.select().from(billingTasks).where(eq(billingTasks.projectId, id)),
@@ -190,6 +190,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           projectId={id}
           customer={project.customer}
           jobStatus={project.status}
+          qb={qbStatus}
           quotes={projectQuoteRows
             .slice()
             .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
@@ -208,6 +209,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               billedDate: q.billedDate,
               billedAmount: q.billedAmount == null ? null : Number(q.billedAmount),
               billedBy: q.billedBy,
+              qbInvoiceId: q.qbInvoiceId,
             }))}
           logs={projectLogs.map((l) => ({ id: l.id, date: l.date, foreman: l.foreman, description: l.description, scopeChange: l.scopeChange }))}
         />

@@ -524,6 +524,7 @@ export const projectQuotes = pgTable("project_quotes", {
   billedDate: text("billed_date"),
   billedAmount: numeric("billed_amount"),
   billedBy: text("billed_by"),
+  qbInvoiceId: text("qb_invoice_id"), // set when White Board created the invoice in QuickBooks from this quote
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

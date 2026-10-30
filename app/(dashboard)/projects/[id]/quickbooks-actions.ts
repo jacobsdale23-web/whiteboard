@@ -6,8 +6,8 @@ import { db } from "@/lib/db";
 import { billingTasks, tmInvoices } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
 import { requireProject } from "@/lib/auth/company";
-import { disconnect, getConnection, qbApi, qbAttach, qbConfig, qbQuery, qbQuote, QbError } from "@/lib/quickbooks";
-import { buildCustomerMemo, buildQbLines } from "@/lib/qb-invoice";
+import { disconnect, findJobCustomer, getConnection, qbApi, qbAttach, qbConfig, qbQuery, QbError } from "@/lib/quickbooks";
+import { buildCustomerMemo, buildQbLines, qbInvoiceLink } from "@/lib/qb-invoice";
 import { exportInvoiceExcel } from "./billing-actions";
 
 async function requireQbAdmin(projectId: string) {
@@ -17,25 +17,7 @@ async function requireQbAdmin(projectId: string) {
   return { project, name: current.profile.name };
 }
 
-type QbCustomer = { Id: string; DisplayName: string };
-
-// The QuickBooks customer (job) this invoice is billed to: the job named with the project number ("26100 - Luling 8"
-// Ph 1"), or else the bill-to name on the billing task. Never guessed and never created.
-async function findCustomer(companyId: string, projectNumber: string | null, billToName: string | null): Promise<QbCustomer | string> {
-  if (projectNumber) {
-    const found = await qbQuery<QbCustomer>(companyId, `select Id, DisplayName from Customer where DisplayName like '${qbQuote(projectNumber)}%'`, "Customer");
-    const exact = found.filter((c) => c.DisplayName.startsWith(`${projectNumber} -`) || c.DisplayName === projectNumber);
-    if (exact.length === 1) return exact[0];
-    if (exact.length > 1) return `QuickBooks has more than one job starting ${projectNumber} (${exact.map((c) => c.DisplayName).join("; ")}). Send this one by hand, or tell Jacob.`;
-  }
-  if (billToName) {
-    const found = await qbQuery<QbCustomer>(companyId, `select Id, DisplayName from Customer where DisplayName = '${qbQuote(billToName)}'`, "Customer");
-    if (found.length === 1) return found[0];
-  }
-  return `QuickBooks has no job ${projectNumber ? `named ${projectNumber} - ...` : "for this project"} yet${billToName ? ` and no customer named "${billToName}"` : ""}. Create the job in QuickBooks first (or add the Bill-to name on the billing task), then send again.`;
-}
-
-export type SendResult = { error?: string; docNumber?: string; note?: string };
+export type SendResult = { error?: string; docNumber?: string; note?: string; link?: string };
 
 // Creates this approved invoice in QuickBooks (saved there, not emailed) with the short "Per Man / Per Welder" lines and
 // the task details on top, attaches the Excel backup, and remembers where it went.
@@ -44,7 +26,8 @@ export async function sendInvoiceToQuickBooks(projectId: string, invoiceId: stri
     const { project, name } = await requireQbAdmin(projectId);
     const companyId = project.companyId;
     if (!qbConfig().configured) return { error: "QuickBooks isn't set up for White Board yet." };
-    if (!(await getConnection(companyId))) return { error: "QuickBooks isn't connected for this company. Use Connect QuickBooks first." };
+    const conn = await getConnection(companyId);
+    if (!conn) return { error: "QuickBooks isn't connected for this company. Use Connect QuickBooks first." };
 
     const [invoice] = await db.select().from(tmInvoices).where(and(eq(tmInvoices.id, invoiceId), eq(tmInvoices.projectId, projectId)));
     if (!invoice) return { error: "Invoice not found." };
@@ -55,7 +38,7 @@ export async function sendInvoiceToQuickBooks(projectId: string, invoiceId: stri
     const built = buildQbLines(invoice.lineItems || [], Number(invoice.total));
     if ("error" in built) return { error: built.error };
 
-    const customer = await findCustomer(companyId, project.projectNumber, task?.billToName ?? null);
+    const customer = await findJobCustomer(companyId, project.projectNumber, task?.billToName ?? null);
     if (typeof customer === "string") return { error: customer };
 
     const items = await qbQuery<{ Id: string; Name: string }>(companyId, "select Id, Name from Item where Name = 'Labor & Equipment'", "Item");
@@ -92,7 +75,7 @@ export async function sendInvoiceToQuickBooks(projectId: string, invoiceId: stri
       note = "The invoice is in QuickBooks, but the Excel backup couldn't be attached to it. Export it from here and attach it.";
     }
     revalidatePath(`/projects/${projectId}`);
-    return { docNumber: qbInv.DocNumber, note };
+    return { docNumber: qbInv.DocNumber, note, link: qbInvoiceLink(conn.realmId, qbInv.Id) };
   } catch (e) {
     if (e instanceof QbError) return { error: e.message };
     return { error: "Something went wrong sending this to QuickBooks. Check QuickBooks before trying again." };

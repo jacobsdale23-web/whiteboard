@@ -159,6 +159,24 @@ export async function qbQuery<T>(companyId: string, sql: string, entity: string)
   return res.QueryResponse?.[entity] || [];
 }
 
+type QbCustomer = { Id: string; DisplayName: string };
+
+// The QuickBooks customer (job) an invoice is billed to: the job named with the project number ("26100 - Luling 8"
+// Ph 1"), or else the fallback customer name. Never guessed and never created; a string result is the reason it failed.
+export async function findJobCustomer(companyId: string, projectNumber: string | null, fallbackName: string | null): Promise<QbCustomer | string> {
+  if (projectNumber) {
+    const found = await qbQuery<QbCustomer>(companyId, `select Id, DisplayName from Customer where DisplayName like '${qbQuote(projectNumber)}%'`, "Customer");
+    const exact = found.filter((c) => c.DisplayName.startsWith(`${projectNumber} -`) || c.DisplayName === projectNumber);
+    if (exact.length === 1) return exact[0];
+    if (exact.length > 1) return `QuickBooks has more than one job starting ${projectNumber} (${exact.map((c) => c.DisplayName).join("; ")}). Create this invoice by hand, or tell Jacob.`;
+  }
+  if (fallbackName) {
+    const found = await qbQuery<QbCustomer>(companyId, `select Id, DisplayName from Customer where DisplayName = '${qbQuote(fallbackName)}'`, "Customer");
+    if (found.length === 1) return found[0];
+  }
+  return `QuickBooks has no job ${projectNumber ? `named ${projectNumber} - ...` : "for this project"} yet${fallbackName ? ` and no customer named "${fallbackName}"` : ""}. Create the job in QuickBooks first, then try again.`;
+}
+
 export async function qbCompanyName(companyId: string): Promise<string | null> {
   const { realmId } = await accessToken(companyId);
   const res = await qbApi<{ CompanyInfo?: { CompanyName?: string } }>(companyId, "GET", `/companyinfo/${realmId}`);

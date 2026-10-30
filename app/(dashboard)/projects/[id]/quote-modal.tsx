@@ -21,6 +21,7 @@ export type QuoteRow = {
   billedDate: string | null;
   billedAmount: number | null;
   billedBy: string | null;
+  qbInvoiceId: string | null;
 };
 
 type Line = { description: string; qty: string; amount: string };

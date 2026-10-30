@@ -3,8 +3,11 @@
 import { useState } from "react";
 import { billingChecks } from "@/lib/quotes";
 import { getProjectFileDownloadUrl } from "./project-file-actions";
-import { clearQuoteBilled, deleteQuote, recordQuoteBilled } from "./quote-actions";
+import { clearQuoteBilled, createInvoiceFromQuote, deleteQuote, recordQuoteBilled } from "./quote-actions";
 import QuoteModal, { money, type QuoteRow } from "./quote-modal";
+import type { QbStatus } from "./billing-section";
+import { openLater } from "@/lib/open-later";
+import { qbInvoiceLink } from "@/lib/qb-invoice";
 
 type CardLog = { id: string; date: string; foreman: string | null; description: string | null; scopeChange: boolean };
 
@@ -17,7 +20,7 @@ const fmtDate = (iso: string | null) => {
 
 // A small job's quote, kept with the job like a contract: what was quoted, the daily logs that confirm what was done,
 // and the hand-off to QuickBooks to bill it. The invoice itself is made in QuickBooks.
-export default function QuoteCard({ projectId, customer, jobStatus, quotes, logs }: { projectId: string; customer: string | null; jobStatus: string; quotes: QuoteRow[]; logs: CardLog[] }) {
+export default function QuoteCard({ projectId, customer, jobStatus, qb, quotes, logs }: { projectId: string; customer: string | null; jobStatus: string; qb: QbStatus; quotes: QuoteRow[]; logs: CardLog[] }) {
   const [editing, setEditing] = useState<QuoteRow | "new" | null>(null);
   const [error, setError] = useState("");
 
@@ -53,7 +56,7 @@ export default function QuoteCard({ projectId, customer, jobStatus, quotes, logs
       {!quotes.length && <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>No quote attached yet. Attach the QuickBooks quote and it will be here when it&apos;s time to bill.</p>}
 
       {quotes.map((q) => (
-        <QuoteBlock key={q.id} projectId={projectId} quote={q} onEdit={() => setEditing(q)} onOpenPdf={openPdf} setError={setError} />
+        <QuoteBlock key={q.id} projectId={projectId} quote={q} qb={qb} ready={ready} onEdit={() => setEditing(q)} onOpenPdf={openPdf} setError={setError} />
       ))}
 
       {unbilled.length > 0 && (
@@ -109,12 +112,16 @@ export default function QuoteCard({ projectId, customer, jobStatus, quotes, logs
 function QuoteBlock({
   projectId,
   quote: q,
+  qb,
+  ready,
   onEdit,
   onOpenPdf,
   setError,
 }: {
   projectId: string;
   quote: QuoteRow;
+  qb: QbStatus;
+  ready: boolean;
   onEdit: () => void;
   onOpenPdf: (fileId: string) => void;
   setError: (s: string) => void;
@@ -125,6 +132,21 @@ function QuoteBlock({
   const [amount, setAmount] = useState(String(q.total));
   const [markBilled, setMarkBilled] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [info, setInfo] = useState("");
+
+  // Creates the invoice in QuickBooks from this quote and opens it there to review and send.
+  function createInvoice() {
+    const warn = ready ? "" : "\n\nHeads up: the Before you bill checks aren't all clear.";
+    if (!confirm(`Create the invoice for quote #${q.number} (${money(q.total)}) in QuickBooks${qb.companyName ? ` (${qb.companyName})` : ""}? It is saved there, not emailed, and opens for you to review.${warn}`)) return;
+    setInfo("");
+    const show = openLater();
+    void run(async () => {
+      const res = await createInvoiceFromQuote(projectId, q.id);
+      if (res.note) setInfo(res.note);
+      show(res.link);
+      return res;
+    });
+  }
 
   async function run(fn: () => Promise<{ error?: string }>) {
     setError("");
@@ -199,6 +221,14 @@ function QuoteBlock({
             <div style={{ fontSize: "0.86rem" }}>
               <strong style={{ color: "var(--active)" }}>Billed in QuickBooks</strong> · Invoice #{q.billedInvoiceNo} · {fmtDate(q.billedDate)} · {q.billedAmount != null ? money(q.billedAmount) : ""}
               {q.billedBy ? ` · recorded by ${q.billedBy}` : ""}
+              {q.qbInvoiceId && qb.realmId && (
+                <>
+                  {" · "}
+                  <a href={qbInvoiceLink(qb.realmId, q.qbInvoiceId)} target="_blank" rel="noreferrer" style={{ color: "inherit" }}>
+                    Open in QuickBooks ↗
+                  </a>
+                </>
+              )}
               {differs && <div style={{ color: "var(--danger)", fontSize: "0.78rem", marginTop: 2 }}>Differs from the quote by {money(Math.abs((q.billedAmount ?? 0) - q.total))}.</div>}
             </div>
             <button
@@ -241,17 +271,42 @@ function QuoteBlock({
             </div>
           </div>
         ) : (
+          <>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <a href={q.qbLink || "https://qbo.intuit.com/app/estimates"} target="_blank" rel="noreferrer" style={{ ...primaryBtnStyle, textDecoration: "none", display: "inline-block" }}>
-              {q.qbLink ? "Open quote in QuickBooks ↗" : "Open QuickBooks estimates ↗"}
-            </a>
+            {qb.connected ? (
+              <button onClick={createInvoice} disabled={busy} style={primaryBtnStyle} title="Creates the invoice in QuickBooks from this quote, with the daily logs attached, and opens it">
+                {busy ? "Creating…" : "Create invoice in QuickBooks"}
+              </button>
+            ) : (
+              <>
+                <a href={q.qbLink || "https://qbo.intuit.com/app/estimates"} target="_blank" rel="noreferrer" style={{ ...primaryBtnStyle, textDecoration: "none", display: "inline-block" }}>
+                  {q.qbLink ? "Open quote in QuickBooks ↗" : "Open QuickBooks estimates ↗"}
+                </a>
+                {qb.configured && (
+                  <a href={`/api/quickbooks/connect?returnTo=${encodeURIComponent(`/projects/${projectId}`)}`} style={{ ...secondaryBtnStyle, textDecoration: "none", display: "inline-block" }} title="One-time sign-in so White Board can create the invoice for you">
+                    Connect QuickBooks
+                  </a>
+                )}
+              </>
+            )}
+            {qb.connected && q.qbLink && (
+              <a href={q.qbLink} target="_blank" rel="noreferrer" style={{ ...secondaryBtnStyle, textDecoration: "none", display: "inline-block" }}>
+                Open quote in QuickBooks ↗
+              </a>
+            )}
             <button onClick={() => setRecording(true)} style={secondaryBtnStyle}>
               I billed it — record invoice
             </button>
             <span style={{ fontSize: "0.76rem", color: "var(--muted)" }}>
-              {q.qbLink ? "In QuickBooks choose Create invoice, then come back and record the invoice number." : `Find quote #${q.number} in QuickBooks and choose Create invoice.`}
+              {qb.connected
+                ? "Opens the new invoice in QuickBooks to review and send."
+                : q.qbLink
+                  ? "In QuickBooks choose Create invoice, then come back and record the invoice number."
+                  : `Find quote #${q.number} in QuickBooks and choose Create invoice.`}
             </span>
           </div>
+          {info && <p style={{ fontSize: "0.8rem", color: "var(--ink-soft)", marginTop: 8 }}>{info}</p>}
+          </>
         )}
       </div>
     </div>

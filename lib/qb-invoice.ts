@@ -43,6 +43,10 @@ export function buildQbLines(rows: TmRow[], invoiceTotal: number): { lines: QbLi
   return { lines };
 }
 
+// Opens an invoice in the right QuickBooks company even if the browser is signed in to another one.
+export const qbInvoiceLink = (realmId: string, invoiceId: string) =>
+  `https://qbo.intuit.com/app/login?pagereq=${encodeURIComponent(`invoice?txnId=${invoiceId}`)}&deeplinkcompanyid=${encodeURIComponent(realmId)}`;
+
 const shortDate = (iso: string) => {
   const [y, m, d] = iso.split("-");
   return `${Number(m)}/${Number(d)}/${y.slice(2)}`;

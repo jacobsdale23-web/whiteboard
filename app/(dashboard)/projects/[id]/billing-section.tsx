@@ -21,9 +21,11 @@ import {
   unacknowledgeWarning,
 } from "./billing-actions";
 import { sendInvoiceToQuickBooks, disconnectQuickBooks } from "./quickbooks-actions";
+import { openLater } from "@/lib/open-later";
+import { qbInvoiceLink } from "@/lib/qb-invoice";
 
 // Whether White Board can send invoices to this company's QuickBooks.
-export type QbStatus = { configured: boolean; connected: boolean; companyName: string | null };
+export type QbStatus = { configured: boolean; connected: boolean; companyName: string | null; realmId: string | null };
 import { warningKey, warningKind } from "@/lib/tm-ack";
 
 type BillingRate = { id: string; position: string; hourlyRate: string };
@@ -564,7 +566,7 @@ function InvoiceCard({ projectId, invoice, tasks, qb }: { projectId: string; inv
               </button>
             )}
             {!isDraft && invoice.qbInvoiceId && (
-              <a href={`https://qbo.intuit.com/app/invoice?txnId=${encodeURIComponent(invoice.qbInvoiceId)}`} target="_blank" rel="noreferrer" style={{ ...secondaryBtnStyle, textDecoration: "none", display: "inline-block" }}>
+              <a href={qb.realmId ? qbInvoiceLink(qb.realmId, invoice.qbInvoiceId) : `https://qbo.intuit.com/app/invoice?txnId=${encodeURIComponent(invoice.qbInvoiceId)}`} target="_blank" rel="noreferrer" style={{ ...secondaryBtnStyle, textDecoration: "none", display: "inline-block" }}>
                 ✓ In QuickBooks{invoice.invoiceNumber ? ` #${invoice.invoiceNumber}` : ""} ↗
               </a>
             )}
@@ -574,9 +576,11 @@ function InvoiceCard({ projectId, invoice, tasks, qb }: { projectId: string; inv
                 onClick={() => {
                   if (!confirm(`Create this invoice in QuickBooks${qb.companyName ? ` (${qb.companyName})` : ""} for $${Number(invoice.total).toLocaleString()}? It is saved there, not emailed.`)) return;
                   setQbNote("");
+                  const show = openLater(); // opens the new invoice in QuickBooks when it is ready
                   run(async () => {
                     const res = await sendInvoiceToQuickBooks(projectId, invoice.id);
                     if (res.note) setQbNote(res.note);
+                    show(res.link);
                     return res;
                   });
                 }}
