@@ -137,6 +137,7 @@ type QbEstimate = {
   TotalAmt?: number;
   CustomerRef?: { value: string; name?: string };
   CustomerMemo?: { value?: string };
+  BillEmail?: { Address?: string };
   TxnTaxDetail?: { TotalTax?: number };
   Line?: { DetailType: string; Amount?: number; Description?: string; SalesItemLineDetail?: { ItemRef?: { value: string; name?: string }; Qty?: number; UnitPrice?: number; TaxCodeRef?: { value: string }; ClassRef?: { value: string } } }[];
 };
@@ -179,8 +180,9 @@ export async function createInvoiceFromQuote(projectId: string, quoteId: string)
       CustomerRef: { value: billTo },
       TxnDate: today,
       ...(est.CustomerMemo?.value ? { CustomerMemo: { value: est.CustomerMemo.value } } : {}),
-      // No email address goes on the invoice: it is downloaded as a PDF and sent by hand, and QuickBooks' own automatic
-      // reminders only work when an invoice has an address.
+      // The customer's email from the quote stays on the invoice (Jacob wants it there). It is only an address: nothing is
+      // sent, because invoices are downloaded as PDFs and emailed by hand.
+      ...(est.BillEmail?.Address ? { BillEmail: { Address: est.BillEmail.Address } } : {}),
       PrivateNote: `From White Board: quote #${quote.number}`,
       LinkedTxn: [{ TxnId: est.Id, TxnType: "Estimate" }],
       Line: lines.map((l) => ({
