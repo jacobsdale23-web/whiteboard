@@ -157,6 +157,18 @@ export async function qbApi<T = Record<string, unknown>>(companyId: string, meth
   return (await res.json()) as T;
 }
 
+// The PDF QuickBooks renders for an invoice (the same one its Print or download gives).
+export async function qbInvoicePdf(companyId: string, invoiceId: string): Promise<Buffer> {
+  if (!/^\d+$/.test(invoiceId)) throw new QbError("That isn't a QuickBooks invoice id.");
+  const { token, realmId } = await accessToken(companyId);
+  const res = await fetch(`${qbConfig().apiBase}/v3/company/${realmId}/invoice/${invoiceId}/pdf?minorversion=${MINOR_VERSION}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/pdf" },
+  });
+  if (res.status === 401) throw new QbError("QuickBooks turned down the connection. Connect QuickBooks again.");
+  if (!res.ok) throw new QbError(`QuickBooks wouldn't give the PDF (${res.status}). Open the invoice in QuickBooks instead.`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
 // QuickBooks query language; single quotes in values are escaped with a backslash.
 export const qbQuote = (s: string) => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 

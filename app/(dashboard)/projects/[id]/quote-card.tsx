@@ -7,6 +7,8 @@ import { clearQuoteBilled, createInvoiceFromQuote, deleteQuote, recordQuoteBille
 import QuoteModal, { money, type QuoteRow } from "./quote-modal";
 import type { QbStatus } from "./billing-section";
 import { openLater } from "@/lib/open-later";
+import { downloadBase64 } from "@/lib/download-file";
+import { downloadQbInvoicePdf } from "./quickbooks-actions";
 import { qbInvoiceLink } from "@/lib/qb-invoice";
 
 type CardLog = { id: string; date: string; foreman: string | null; description: string | null; scopeChange: boolean };
@@ -134,7 +136,22 @@ function QuoteBlock({
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState("");
 
-  // Creates the invoice in QuickBooks from this quote and opens it there to review and send.
+  // The invoice PDF straight from QuickBooks, to email by hand.
+  async function downloadPdf() {
+    setError("");
+    setBusy(true);
+    try {
+      const res = await downloadQbInvoicePdf(projectId, q.qbInvoiceId!);
+      if (res.error || !res.base64 || !res.filename) setError(res.error || "Couldn't get the PDF.");
+      else downloadBase64(res.filename, res.base64);
+    } catch {
+      setError("Couldn't get the PDF from QuickBooks. Open the invoice there instead.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Creates the invoice in QuickBooks from this quote and opens it there to review.
   function createInvoice() {
     const warn = ready ? "" : "\n\nHeads up: the Before you bill checks aren't all clear.";
     if (!confirm(`Create the invoice for quote #${q.number} (${money(q.total)}) in QuickBooks${qb.companyName ? ` (${qb.companyName})` : ""}? It is saved there, not emailed, and opens for you to review.${warn}`)) return;
@@ -231,15 +248,22 @@ function QuoteBlock({
               )}
               {differs && <div style={{ color: "var(--danger)", fontSize: "0.78rem", marginTop: 2 }}>Differs from the quote by {money(Math.abs((q.billedAmount ?? 0) - q.total))}.</div>}
             </div>
-            <button
-              onClick={() => {
-                if (confirm("Clear the invoice recorded for this quote?")) void run(() => clearQuoteBilled(projectId, q.id));
-              }}
-              disabled={busy}
-              style={smallBtnStyle}
-            >
-              Undo
-            </button>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {q.qbInvoiceId && qb.connected && (
+                <button onClick={downloadPdf} disabled={busy} style={primaryBtnStyle} title="Downloads the invoice PDF from QuickBooks so you can email it yourself">
+                  {busy ? "Getting PDF…" : "Download PDF"}
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  if (confirm("Clear the invoice recorded for this quote?")) void run(() => clearQuoteBilled(projectId, q.id));
+                }}
+                disabled={busy}
+                style={smallBtnStyle}
+              >
+                Undo
+              </button>
+            </div>
           </div>
         ) : recording ? (
           <div>

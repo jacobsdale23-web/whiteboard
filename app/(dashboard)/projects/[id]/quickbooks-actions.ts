@@ -3,10 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { billingTasks, tmInvoices } from "@/lib/db/schema";
+import { billingTasks, projectQuotes, tmInvoices } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
 import { requireProject } from "@/lib/auth/company";
-import { disconnect, findJobCustomer, getConnection, qbApi, qbAttach, qbConfig, qbQuery, QbError } from "@/lib/quickbooks";
+import { disconnect, findJobCustomer, getConnection, qbApi, qbAttach, qbConfig, qbInvoicePdf, qbQuery, QbError } from "@/lib/quickbooks";
 import { buildCustomerMemo, buildQbLines, qbInvoiceLink } from "@/lib/qb-invoice";
 import { exportInvoiceExcel } from "./billing-actions";
 
@@ -79,6 +79,24 @@ export async function sendInvoiceToQuickBooks(projectId: string, invoiceId: stri
   } catch (e) {
     if (e instanceof QbError) return { error: e.message };
     return { error: "Something went wrong sending this to QuickBooks. Check QuickBooks before trying again." };
+  }
+}
+
+// The PDF of an invoice White Board created in QuickBooks (a T&M invoice or a quote's invoice on this job), straight
+// from QuickBooks, so it can be downloaded and emailed by hand.
+export async function downloadQbInvoicePdf(projectId: string, qbInvoiceId: string): Promise<{ error?: string; filename?: string; base64?: string }> {
+  try {
+    const { project } = await requireQbAdmin(projectId);
+    const [tm] = await db.select({ n: tmInvoices.invoiceNumber }).from(tmInvoices).where(and(eq(tmInvoices.projectId, projectId), eq(tmInvoices.qbInvoiceId, qbInvoiceId)));
+    const [quote] = tm ? [] : await db.select({ n: projectQuotes.billedInvoiceNo }).from(projectQuotes).where(and(eq(projectQuotes.projectId, projectId), eq(projectQuotes.qbInvoiceId, qbInvoiceId)));
+    if (!tm && !quote) return { error: "That invoice isn't on this job." };
+    const pdf = await qbInvoicePdf(project.companyId, qbInvoiceId);
+    const number = (tm?.n || quote?.n || qbInvoiceId).replace(/[^A-Za-z0-9-]+/g, "");
+    const job = (project.projectNumber || project.name).replace(/[^A-Za-z0-9]+/g, "_").slice(0, 30);
+    return { filename: `Invoice-${number}-${job}.pdf`, base64: pdf.toString("base64") };
+  } catch (e) {
+    if (e instanceof QbError) return { error: e.message };
+    return { error: "Couldn't get the PDF from QuickBooks. Open the invoice there instead." };
   }
 }
 

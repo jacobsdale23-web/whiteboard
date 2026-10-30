@@ -20,8 +20,9 @@ import {
   acknowledgeWarnings,
   unacknowledgeWarning,
 } from "./billing-actions";
-import { sendInvoiceToQuickBooks, disconnectQuickBooks } from "./quickbooks-actions";
+import { sendInvoiceToQuickBooks, disconnectQuickBooks, downloadQbInvoicePdf } from "./quickbooks-actions";
 import { openLater } from "@/lib/open-later";
+import { downloadBase64 } from "@/lib/download-file";
 import { qbInvoiceLink } from "@/lib/qb-invoice";
 
 // Whether White Board can send invoices to this company's QuickBooks.
@@ -569,6 +570,22 @@ function InvoiceCard({ projectId, invoice, tasks, qb }: { projectId: string; inv
               <a href={qb.realmId ? qbInvoiceLink(qb.realmId, invoice.qbInvoiceId) : `https://qbo.intuit.com/app/invoice?txnId=${encodeURIComponent(invoice.qbInvoiceId)}`} target="_blank" rel="noreferrer" style={{ ...secondaryBtnStyle, textDecoration: "none", display: "inline-block" }}>
                 ✓ In QuickBooks{invoice.invoiceNumber ? ` #${invoice.invoiceNumber}` : ""} ↗
               </a>
+            )}
+            {!isDraft && invoice.qbInvoiceId && qb.connected && (
+              <button
+                disabled={pending}
+                onClick={() =>
+                  run(async () => {
+                    const res = await downloadQbInvoicePdf(projectId, invoice.qbInvoiceId!);
+                    if (res.error || !res.base64 || !res.filename) return { error: res.error || "Couldn't get the PDF." };
+                    downloadBase64(res.filename, res.base64);
+                  })
+                }
+                style={primaryBtnStyle}
+                title="Downloads the invoice PDF from QuickBooks so you can email it yourself"
+              >
+                {pending ? "Getting PDF…" : "Download PDF"}
+              </button>
             )}
             {!isDraft && !invoice.qbInvoiceId && qb.connected && (
               <button
