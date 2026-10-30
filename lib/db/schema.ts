@@ -523,6 +523,26 @@ export const projectQuotes = pgTable("project_quotes", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// QuickBooks invoices, copied by the twice-weekly QuickBooks check so a job can list what was billed. Read-only
+// here: QuickBooks is where invoices are made. `projectNumber` is the job number when the invoice is billed to a
+// QuickBooks job ("26100 - Luling 8\" Ph 1"); other invoices are tied to a job through a quote's recorded invoice.
+export const qbInvoices = pgTable(
+  "qb_invoices",
+  {
+    companyId: text("company_id").notNull(),
+    invoiceNo: text("invoice_no").notNull(),
+    projectNumber: text("project_number"),
+    customer: text("customer"),
+    txnDate: text("txn_date"),
+    amount: numeric("amount").notNull().default("0"),
+    balance: numeric("balance").notNull().default("0"),
+    memo: text("memo"),
+    link: text("link"),
+    syncedAt: timestamp("synced_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.companyId, t.invoiceNo] })]
+);
+
 // O&M field report: one per job a crew does, with only the sections that kind of job needs (see lib/om-report.ts).
 // `data` holds the answers by field key; photos are private-bucket keys with a caption.
 export const omReports = pgTable("om_reports", {

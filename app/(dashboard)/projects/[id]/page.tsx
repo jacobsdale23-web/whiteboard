@@ -177,7 +177,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       </div>
 
       {isAdmin && !readOnly && budgetData && (
-        <QuickBooksCard companyId={project.companyId} projectNumber={project.projectNumber} projectName={project.name} wb={whiteboardFigures(budgetData)} />
+        <QuickBooksCard companyId={project.companyId} projectNumber={project.projectNumber} projectName={project.name} wb={whiteboardFigures(budgetData)} quoteInvoiceNos={projectQuoteRows.map((q) => q.billedInvoiceNo).filter((n): n is string => !!n)} />
       )}
 
       {/* Small jobs billed from a quote. Jobs with a schedule of values or pay apps are billed another way, so the card only shows there once a quote is attached. */}
