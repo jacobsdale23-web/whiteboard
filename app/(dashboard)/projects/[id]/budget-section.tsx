@@ -4,14 +4,22 @@ import { useState, useTransition } from "react";
 import { addExpense, addInvoice, deleteExpense, deleteInvoice } from "./budget-actions";
 import { deletePayApp } from "./payapp-actions";
 import { getReceiptUrl, deleteReceipt } from "./receipt-actions";
-import PayAppModal from "./payapp-modal";
+import PayAppModal, { type PayAppDraft } from "./payapp-modal";
+import GenerateFromLogs from "./production-billing";
+import SovSetupModal from "./sov-setup-modal";
 import { sortedPayApps, rollupAt, itemStatsAt, type SovItemRow, type SovEntryRow, type PayAppRow } from "@/lib/sov";
 
 const CATEGORIES = ["Materials", "Subcontractor", "Equipment", "Other"];
 
 type Expense = { id: string; date: string | null; description: string | null; amount: string };
 type Invoice = { id: string; invoiceNumber: string | null; vendor: string | null; date: string | null; amount: string; category: string };
-type PayApp = PayAppRow & { id: string; period: string | null; applicationDate: string | null };
+type PayApp = PayAppRow & { id: string; period: string | null; applicationDate: string | null; logFrom: string | null; logTo: string | null };
+
+const dayAfter = (iso: string) => {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+};
 type Receipt = {
   id: string;
   date: string | null;
@@ -33,6 +41,8 @@ export default function BudgetSection({
   sovItems,
   sovEntries,
   receipts,
+  productionDates,
+  showProduction,
 }: {
   projectId: string;
   contractValue: string | null;
@@ -42,9 +52,22 @@ export default function BudgetSection({
   sovItems: SovItemRow[];
   sovEntries: SovEntryRow[];
   receipts: Receipt[];
+  // Dates of the daily logs that have production quantities on them.
+  productionDates: string[];
+  // Unit-price job (not T&M): offers line-item setup and billing from the daily logs.
+  showProduction: boolean;
 }) {
   const [showPayAppModal, setShowPayAppModal] = useState(false);
+  const [showGenerate, setShowGenerate] = useState(false);
+  const [showSetup, setShowSetup] = useState(false);
+  const [draft, setDraft] = useState<PayAppDraft | null>(null);
   const [, startTransition] = useTransition();
+
+  // Default dates for "Generate from daily logs": the day after the last pay app built from logs, through the latest logged day.
+  const lastBilledTo = payApps.map((a) => a.logTo).filter((d): d is string => !!d).sort().pop() || null;
+  const sortedDates = productionDates.slice().sort();
+  const genTo = sortedDates[sortedDates.length - 1] || "";
+  const genFrom = lastBilledTo ? dayAfter(lastBilledTo) : sortedDates[0] || "";
 
   const ordered = sortedPayApps(payApps);
   const latestIndex = ordered.length - 1;
@@ -68,7 +91,24 @@ export default function BudgetSection({
         <Stat label="Margin" value={fmt(margin)} danger={margin < 0} />
       </div>
 
-      <SubSection title="Pay Applications" action={<button onClick={() => setShowPayAppModal(true)} style={addBtnStyle}>+ Add Pay Application</button>}>
+      <SubSection
+        title="Pay Applications"
+        action={
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            {showProduction && (
+              <button onClick={() => setShowSetup(true)} style={addBtnStyle} title="The job's bid items, with units, that foremen log quantities against">
+                Line Items
+              </button>
+            )}
+            {showProduction && sovItems.length > 0 && (
+              <button onClick={() => setShowGenerate(true)} disabled={!productionDates.length} style={{ ...addBtnStyle, opacity: productionDates.length ? 1 : 0.5 }} title={productionDates.length ? "Compile the quantities foremen logged into a pay application" : "No production has been logged on the daily logs yet"}>
+                Generate from Daily Logs
+              </button>
+            )}
+            <button onClick={() => { setDraft(null); setShowPayAppModal(true); }} style={addBtnStyle}>+ Add Pay Application</button>
+          </div>
+        }
+      >
         {ordered.length ? (
           ordered
             .slice()
@@ -83,6 +123,11 @@ export default function BudgetSection({
                     <div style={{ fontSize: "0.76rem", color: "var(--muted)" }}>
                       {pa.period || ""} {pa.applicationDate ? `· ${pa.applicationDate}` : ""}
                     </div>
+                    {pa.logFrom && pa.logTo && (
+                      <div style={{ fontSize: "0.72rem", color: "var(--muted)" }}>
+                        From daily logs {pa.logFrom} to {pa.logTo}
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, fontFamily: "var(--font-mono)", fontSize: "0.84rem" }}>
                     <span>Due {fmt(r.amountDue)}</span>
@@ -177,8 +222,32 @@ export default function BudgetSection({
         )}
       </SubSection>
 
+      {showGenerate && (
+        <GenerateFromLogs
+          projectId={projectId}
+          defaultFrom={genFrom}
+          defaultTo={genTo}
+          onClose={() => setShowGenerate(false)}
+          onContinue={(d) => {
+            setDraft(d);
+            setShowGenerate(false);
+            setShowPayAppModal(true);
+          }}
+        />
+      )}
+      {showSetup && <SovSetupModal projectId={projectId} existingItems={sovItems} onClose={() => setShowSetup(false)} />}
       {showPayAppModal && (
-        <PayAppModal projectId={projectId} existingItems={sovItems} onClose={() => setShowPayAppModal(false)} />
+        <PayAppModal
+          // A new key starts the form fresh when it opens from a compiled draft.
+          key={draft ? `${draft.logFrom}-${draft.logTo}` : "blank"}
+          projectId={projectId}
+          existingItems={sovItems}
+          draft={draft ?? undefined}
+          onClose={() => {
+            setShowPayAppModal(false);
+            setDraft(null);
+          }}
+        />
       )}
     </div>
   );

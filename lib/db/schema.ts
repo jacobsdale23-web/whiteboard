@@ -147,6 +147,9 @@ export const dailyLogs = pgTable("daily_logs", {
   leakNumber: text("leak_number").notNull().default("N/A"),
   foreman: text("foreman"),
   lineItem: text("line_item"), // itemNo, references lineItems.itemNo for this project
+  // Unit-price jobs: what the crew installed that day, by line item (several items per day). Compiled into the
+  // pay app for the dates picked (see lib/production.ts).
+  quantities: jsonb("quantities").$type<{ itemNo: string; qty: number }[]>().notNull().default([]),
   crew: jsonb("crew").$type<{ name: string; position: string; hours: number }[]>().default([]),
   description: text("description"),
   address: text("address"), // job-site address for this entry (T&M billing)
@@ -265,6 +268,7 @@ export const lineItems = pgTable("line_items", {
   projectId: text("project_id").notNull(),
   itemNo: text("item_no").notNull(),
   description: text("description"),
+  unit: text("unit"),
   order: numeric("order").notNull().default("0"),
 });
 
@@ -318,6 +322,10 @@ export const payApps = pgTable("pay_apps", {
   period: text("period"),
   applicationDate: text("application_date"),
   retainagePercent: numeric("retainage_percent").notNull().default("5"),
+  // Set when the quantities were compiled from daily logs: the first and last log date used, so the same logs
+  // aren't billed twice.
+  logFrom: text("log_from"),
+  logTo: text("log_to"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -329,6 +337,7 @@ export const sovItems = pgTable("sov_items", {
   projectId: text("project_id").notNull(),
   itemNo: text("item_no").notNull(),
   description: text("description"),
+  unit: text("unit"), // unit of measure: Each, Linear foot, ...
   bidQty: numeric("bid_qty").notNull().default("0"),
   unitPrice: numeric("unit_price").notNull().default("0"),
   baselineQty: numeric("baseline_qty").notNull().default("0"),

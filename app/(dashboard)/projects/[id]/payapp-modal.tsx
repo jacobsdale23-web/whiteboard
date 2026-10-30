@@ -3,32 +3,45 @@
 import { useState } from "react";
 import { parsePayAppFile, savePayApp } from "./payapp-actions";
 
-type ExistingItem = { itemNo: string; description: string | null; bidQty: string | number; unitPrice: string | number; baselineQty: string | number };
-type RowState = { itemNo: string; description: string; bidQty: number; unitPrice: number; periodQty: number; stored: number; baselineQty: number };
+type ExistingItem = { itemNo: string; description: string | null; unit?: string | null; bidQty: string | number; unitPrice: string | number; baselineQty: string | number };
+type RowState = { itemNo: string; description: string; unit: string; bidQty: number; unitPrice: number; periodQty: number; stored: number; baselineQty: number };
 
-const emptyRow = (): RowState => ({ itemNo: "", description: "", bidQty: 0, unitPrice: 0, periodQty: 0, stored: 0, baselineQty: 0 });
+// A pay application compiled from the foremen's daily logs (see production-billing.tsx), shown here to review before saving.
+export type PayAppDraft = {
+  appNumber: string;
+  period: string;
+  retainagePercent: number;
+  quantities: Record<string, number>;
+  logFrom: string;
+  logTo: string;
+};
+
+const emptyRow = (): RowState => ({ itemNo: "", description: "", unit: "", bidQty: 0, unitPrice: 0, periodQty: 0, stored: 0, baselineQty: 0 });
 
 export default function PayAppModal({
   projectId,
   existingItems,
+  draft,
   onClose,
 }: {
   projectId: string;
   existingItems: ExistingItem[];
+  draft?: PayAppDraft;
   onClose: () => void;
 }) {
-  const [appNumber, setAppNumber] = useState("");
-  const [period, setPeriod] = useState("");
-  const [applicationDate, setApplicationDate] = useState("");
-  const [retainagePercent, setRetainagePercent] = useState(5);
+  const [appNumber, setAppNumber] = useState(draft?.appNumber ?? "");
+  const [period, setPeriod] = useState(draft?.period ?? "");
+  const [applicationDate, setApplicationDate] = useState(draft ? new Date().toISOString().slice(0, 10) : "");
+  const [retainagePercent, setRetainagePercent] = useState(draft?.retainagePercent ?? 5);
   const [rows, setRows] = useState<RowState[]>(
     existingItems.length
       ? existingItems.map((it) => ({
           itemNo: it.itemNo,
           description: it.description || "",
+          unit: it.unit || "",
           bidQty: Number(it.bidQty),
           unitPrice: Number(it.unitPrice),
-          periodQty: 0,
+          periodQty: draft?.quantities[it.itemNo] ?? 0,
           stored: 0,
           baselineQty: Number(it.baselineQty),
         }))
@@ -52,7 +65,7 @@ export default function PayAppModal({
     if (result.applicationDate) setApplicationDate(result.applicationDate);
     if (result.retainagePercent !== null) setRetainagePercent(result.retainagePercent);
     if (result.rows.length) {
-      setRows(result.rows);
+      setRows(result.rows.map((r) => ({ ...r, unit: "" })));
       setImportMsg(`Imported ${result.rows.length} line items from "${result.sheetName || ""}".`);
     } else {
       setImportMsg("Filled in the header fields, but couldn't find a line-item schedule sheet — check the rows below.");
@@ -67,7 +80,11 @@ export default function PayAppModal({
     setError("");
     setSaving(true);
     try {
-      await savePayApp(projectId, { appNumber, period, applicationDate: applicationDate || null, retainagePercent }, rows);
+      await savePayApp(
+        projectId,
+        { appNumber, period, applicationDate: applicationDate || null, retainagePercent, logFrom: draft?.logFrom ?? null, logTo: draft?.logTo ?? null },
+        rows
+      );
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't save that pay application.");
@@ -78,13 +95,19 @@ export default function PayAppModal({
   return (
     <div style={overlayStyle} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div style={modalStyle}>
-        <h2 style={{ marginBottom: 16, textTransform: "uppercase" }}>Add Pay Application</h2>
+        <h2 style={{ marginBottom: 16, textTransform: "uppercase" }}>{draft ? "Pay Application from Daily Logs" : "Add Pay Application"}</h2>
 
-        <div style={{ border: "1px dashed var(--border)", borderRadius: 8, padding: "12px 14px", marginBottom: 16, background: "var(--surface-2)" }}>
-          <label style={labelStyle}>Import from spreadsheet (optional)</label>
-          <input type="file" accept=".xlsx,.xls" onChange={handleFile} />
-          {importMsg && <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: 6 }}>{importMsg}</div>}
-        </div>
+        {draft ? (
+          <div style={{ border: "1px solid var(--active)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, background: "var(--active-bg)", fontSize: "0.84rem" }}>
+            This Period quantities were compiled from the foremen&apos;s daily logs dated {draft.logFrom} to {draft.logTo}. Review them (you can still change any number), then save.
+          </div>
+        ) : (
+          <div style={{ border: "1px dashed var(--border)", borderRadius: 8, padding: "12px 14px", marginBottom: 16, background: "var(--surface-2)" }}>
+            <label style={labelStyle}>Import from spreadsheet (optional)</label>
+            <input type="file" accept=".xlsx,.xls" onChange={handleFile} />
+            {importMsg && <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: 6 }}>{importMsg}</div>}
+          </div>
+        )}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 8 }}>
           <Field label="Application #">
@@ -108,7 +131,7 @@ export default function PayAppModal({
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
             <thead>
               <tr>
-                {["Item", "Description", "Bid Qty", "Unit Price", "This Period Qty", "Stored $", ""].map((h) => (
+                {["Item", "Description", "Unit", "Bid Qty", "Unit Price", "This Period Qty", "Stored $", ""].map((h) => (
                   <th key={h} style={{ textAlign: "left", fontSize: "0.68rem", textTransform: "uppercase", color: "var(--muted)", padding: "0 6px 6px" }}>
                     {h}
                   </th>
@@ -123,6 +146,9 @@ export default function PayAppModal({
                   </td>
                   <td style={{ padding: "3px 4px" }}>
                     <input value={row.description} onChange={(e) => updateRow(i, { description: e.target.value })} style={{ ...cellInputStyle, width: 180 }} />
+                  </td>
+                  <td style={{ padding: "3px 4px" }}>
+                    <input value={row.unit} onChange={(e) => updateRow(i, { unit: e.target.value })} style={{ ...cellInputStyle, width: 70 }} />
                   </td>
                   <td style={{ padding: "3px 4px" }}>
                     <input type="number" value={row.bidQty} onChange={(e) => updateRow(i, { bidQty: Number(e.target.value) })} style={{ ...cellInputStyle, width: 75 }} />

@@ -40,6 +40,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   rows.sort((a, b) => a.date.localeCompare(b.date));
   const items = await db.select().from(lineItems).where(eq(lineItems.projectId, id));
   const itemDesc = new Map(items.map((i) => [i.itemNo, i.description]));
+  const itemUnit = new Map(items.map((i) => [i.itemNo, i.unit]));
 
   const pdf = await buildDailyLogsPdf(
     { name: project.name, projectNumber: project.projectNumber, customer: project.customer, location: project.location, companyName: company?.name ?? "" },
@@ -52,6 +53,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       address: l.address,
       lineItem: l.lineItem,
       lineItemDescription: l.lineItem ? itemDesc.get(l.lineItem) || null : null,
+      quantities: (l.quantities || []).map((q) => ({ itemNo: q.itemNo, description: itemDesc.get(q.itemNo) || null, unit: itemUnit.get(q.itemNo) || null, qty: q.qty })),
       crew: l.crew || [],
       description: l.description,
     })),

@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { Writer, addPageNumbers } from "@/lib/pdf-writer";
+import { fmtQty } from "@/lib/production";
 
 export type PdfLog = {
   date: string;
@@ -10,6 +11,8 @@ export type PdfLog = {
   address: string | null;
   lineItem: string | null;
   lineItemDescription: string | null;
+  // Production installed that day (unit-price jobs).
+  quantities: { itemNo: string; description: string | null; unit: string | null; qty: number }[];
   crew: { name: string; position: string; hours: number }[];
   description: string | null;
 };
@@ -59,6 +62,12 @@ export async function buildDailyLogsPdf(project: PdfProject, logs: PdfLog[], ran
     w.text("Work performed", { bold: true });
     w.text(l.description || "-", { indent: 8 });
     w.gap(4);
+
+    if (l.quantities.length) {
+      w.text("Installed", { bold: true });
+      for (const q of l.quantities) w.row(`Item ${q.itemNo}${q.description ? ` - ${q.description}` : ""}`, `${fmtQty(q.qty)}${q.unit ? ` ${q.unit}` : ""}`, { indent: 8 });
+      w.gap(4);
+    }
 
     if (l.crew.length) {
       w.text("Crew", { bold: true });

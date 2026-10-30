@@ -4,8 +4,9 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { milestones, dailyLogs, leakNumbers, billingTasks } from "@/lib/db/schema";
+import { milestones, dailyLogs, leakNumbers, billingTasks, lineItems } from "@/lib/db/schema";
 import { rememberNames, recordCrewUse } from "@/lib/people";
+import { cleanQuantities, type LogQuantity } from "@/lib/production";
 import { getSessionAndProfile, isSafetyViewer, assertNotSafety } from "@/lib/auth/current-user";
 import { requireProject } from "@/lib/auth/company";
 
@@ -44,7 +45,11 @@ function pickedValue(formData: FormData, name: string): string {
 
 // Reads and validates the log form (shared by add and edit), tidies typed
 // names to match known people, and saves any new leak / task numbers.
-async function prepareLog(companyId: string, projectId: string, formData: FormData) {
+// `already` is the production already on the log being edited, so an item that
+// has since left the job's list can still be kept.
+async function prepareLog(project: { id: string; companyId: string; billingType: string }, formData: FormData, already: LogQuantity[] = []) {
+  const companyId = project.companyId;
+  const projectId = project.id;
   const date = String(formData.get("date") || "");
   const leakNumber = pickedValue(formData, "leakNumber") || "N/A";
   const foreman = String(formData.get("foreman") || "").trim();
@@ -61,7 +66,17 @@ async function prepareLog(companyId: string, projectId: string, formData: FormDa
     .map((n, i) => ({ name: String(n).trim(), position: String(positions[i] || ""), hours: Number(hours[i]) || 0 }))
     .filter((c) => c.name);
 
-  if (!date || !foreman || !description) return null;
+  if (!date || !foreman || !description) return { error: "Date, foreman and a description of the work are required." };
+
+  // Unit-price jobs: what was installed, by line item (T&M jobs have no quantities).
+  let quantities: LogQuantity[] = [];
+  if (project.billingType !== "tm") {
+    const known = await db.select({ itemNo: lineItems.itemNo }).from(lineItems).where(eq(lineItems.projectId, projectId));
+    const allowed = new Set([...known.map((k) => k.itemNo), ...already.map((q) => q.itemNo)]);
+    const cleaned = cleanQuantities(formData.getAll("qtyItem"), formData.getAll("qtyValue"), allowed);
+    if ("error" in cleaned) return { error: cleaned.error };
+    quantities = cleaned.quantities;
+  }
 
   // Match typed names to known people (fixes capitalization) and save new hires.
   const resolved = await rememberNames(companyId, [foreman, ...crewRows.map((c) => c.name)]);
@@ -77,17 +92,19 @@ async function prepareLog(companyId: string, projectId: string, formData: FormDa
     if (!known.length) await db.insert(billingTasks).values({ id: randomUUID(), projectId, taskNumber });
   }
 
-  return { date, leakNumber, foreman: foremanName, lineItem, crew: crewFinal, description, address, taskNumber, locusviewNumber };
+  return { values: { date, leakNumber, foreman: foremanName, lineItem, quantities, crew: crewFinal, description, address, taskNumber, locusviewNumber } };
 }
 
-export async function addLog(projectId: string, formData: FormData) {
+export async function addLog(projectId: string, formData: FormData): Promise<{ error?: string }> {
   await assertNotSafety();
   const project = await requireProject(projectId);
-  const values = await prepareLog(project.companyId, projectId, formData);
-  if (!values) return;
+  const prepared = await prepareLog(project, formData);
+  if ("error" in prepared) return { error: prepared.error };
+  const { values } = prepared;
   await recordCrewUse(project.companyId, values.foreman, values.crew.map((c) => c.name), values.date);
   await db.insert(dailyLogs).values({ id: randomUUID(), projectId, ...values });
   revalidatePath(`/projects/${projectId}`);
+  return {};
 }
 
 // Fix a mistake after submitting. The log is marked as edited (who and when);
@@ -101,8 +118,9 @@ export async function updateLog(projectId: string, logId: string, formData: Form
   const existing = await db.query.dailyLogs.findFirst({ where: and(eq(dailyLogs.id, logId), eq(dailyLogs.projectId, projectId)) });
   if (!existing) return { error: "That log no longer exists." };
 
-  const values = await prepareLog(project.companyId, projectId, formData);
-  if (!values) return { error: "Date, foreman and a description of the work are required." };
+  const prepared = await prepareLog(project, formData, existing.quantities || []);
+  if ("error" in prepared) return { error: prepared.error };
+  const { values } = prepared;
 
   await db
     .update(dailyLogs)

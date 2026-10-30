@@ -1,6 +1,7 @@
 export type SovItemRow = {
   itemNo: string;
   description: string | null;
+  unit?: string | null;
   bidQty: string | number;
   unitPrice: string | number;
   baselineQty: string | number;

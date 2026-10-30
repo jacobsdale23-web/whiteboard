@@ -54,7 +54,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   // O&M crews fill out a field report per job (the sections depend on the kind of job).
   const isOm = project.companyId === "om";
 
-  const [projectMilestones, projectLogs, projectLineItems, projectJsas, projectLeakNumbers, projectTaskNumbers, projectOmReports] = await Promise.all([
+  const [projectMilestones, projectLogs, projectLineItems, projectJsas, projectLeakNumbers, projectTaskNumbers, projectOmReports, projectBilledRanges] = await Promise.all([
     db.select().from(milestones).where(eq(milestones.projectId, id)),
     db.select().from(dailyLogs).where(eq(dailyLogs.projectId, id)),
     db.select().from(lineItems).where(eq(lineItems.projectId, id)),
@@ -62,7 +62,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     db.select().from(leakNumbers).where(eq(leakNumbers.projectId, id)),
     db.select({ taskNumber: billingTasks.taskNumber }).from(billingTasks).where(eq(billingTasks.projectId, id)),
     isOm ? db.select().from(omReports).where(eq(omReports.projectId, id)) : Promise.resolve([] as typeof omReports.$inferSelect[]),
+    // Last day of daily logs already billed on a pay application (everyone sees the date, not the money).
+    isTm ? Promise.resolve([] as { logTo: string | null }[]) : db.select({ logTo: payApps.logTo }).from(payApps).where(eq(payApps.projectId, id)),
   ]);
+
+  // Unit-price jobs with a line-item list: the daily log records what was installed per line item.
+  const production = !isTm && projectLineItems.length > 0;
+  const billedThrough = projectBilledRanges.map((r) => r.logTo).filter((d): d is string => !!d).sort().pop() || null;
 
   let budgetData: {
     expenses: typeof expenses.$inferSelect[];
@@ -182,6 +188,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             payApps={budgetData.payApps}
             sovItems={budgetData.sovItems}
             sovEntries={budgetData.sovEntries}
+            productionDates={projectLogs.filter((l) => l.quantities?.length).map((l) => l.date)}
+            showProduction={!isTm}
             receipts={budgetData.receipts.map((r) => ({
               id: r.id,
               date: r.date,
@@ -272,6 +280,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         people={people.names}
         usualCrews={people.usualCrews}
         isAdmin={isAdmin}
+        production={production}
+        billedThrough={billedThrough}
         readOnly={readOnly}
       />
     </div>
