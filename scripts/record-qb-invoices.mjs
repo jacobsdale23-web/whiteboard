@@ -43,7 +43,7 @@ const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
 await client.connect();
 const quotes = (
   await client.query(
-    `select q.id, q.number, q.total, q.quote_date, q.customer, q.billed_invoice_no, p.project_number, p.name
+    `select q.id, q.number, q.total, q.quote_date, q.customer, q.billed_invoice_no, p.project_number, p.name, p.status
        from project_quotes q join projects p on p.id = q.project_id where p.company_id = 'fwi'`
   )
 ).rows.map((q) => ({ ...q, total: Number(q.total) }));
@@ -87,6 +87,13 @@ for (const { q, i, why } of recorded) {
 }
 for (const { q, cands } of suggestions) {
   console.log(`SUGGESTION (not recorded): quote #${q.number} ${money(q.total)} (${q.project_number || "no number"} ${q.name}) may be invoice ${cands.map((c) => `#${c.no} ${c.date} [${c.customer}]`).join("; ")}`);
+}
+// Work that is finished but has no invoice: the quotes most worth billing.
+const recordedIds = new Set(recorded.map((r) => r.q.id));
+for (const q of open) {
+  if (!recordedIds.has(q.id) && (q.status === "complete" || q.status === "billed")) {
+    console.log(`DONE BUT NOT INVOICED: quote #${q.number} ${money(q.total)} (${q.project_number || "no number"} ${q.name}) - job is ${q.status}${q.status === "billed" ? " in White Board but no invoice was found in QuickBooks" : ""}`);
+  }
 }
 if (!recorded.length && !suggestions.length) console.log(`No new invoices to record; ${open.length} quote(s) still unbilled.`);
 await client.end();
