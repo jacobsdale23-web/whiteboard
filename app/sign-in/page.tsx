@@ -27,10 +27,14 @@ function SignInForm() {
         Password
         <input type="password" name="password" required style={inputStyle} />
       </label>
+      {params.get("reset") && !state?.error && <p style={{ color: "var(--ink-soft)", fontSize: "0.85rem" }}>Your password was changed. Sign in with the new one.</p>}
       {state?.error && <p style={{ color: "var(--danger)", fontSize: "0.85rem" }}>{state.error}</p>}
       <button type="submit" disabled={pending} style={buttonStyle}>
         {pending ? "Signing in…" : "Sign In"}
       </button>
+      <a href="/forgot-password" style={{ fontSize: "0.85rem", color: "var(--muted)", textDecoration: "underline" }}>
+        Forgot your password?
+      </a>
     </form>
   );
 }
