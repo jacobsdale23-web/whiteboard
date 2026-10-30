@@ -8,7 +8,7 @@
 // Estimates already attached are never touched except to refresh their QuickBooks status; a changed total is
 // reported, not overwritten.
 //
-// Run: node --env-file=.env.local scripts/attach-qb-quotes.mjs <estimates.json> [--pdf-dir <dir>] [--dry] [--days 120]
+// Run: node --env-file=.env.local scripts/attach-qb-quotes.mjs <estimates.json> [--pdf-dir <dir>] [--dry] [--days 120] [--assign <estimate number>=<project id>]
 // With --pdf-dir, a file named <estimate number>.pdf there is stored as the quote's PDF.
 import { readFileSync, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -24,6 +24,8 @@ const dry = flag("--dry");
 const pdfDir = opt("--pdf-dir", null);
 const days = Number(opt("--days", 120));
 const COMPANY = "fwi";
+// --assign 1644=<project id> (repeatable) attaches that estimate to that job, whatever the automatic match says.
+const assigned = new Map(args.flatMap((a, i) => (a === "--assign" && args[i + 1]?.includes("=") ? [args[i + 1].split("=")] : [])));
 
 const raw = JSON.parse(readFileSync(file, "utf8"));
 const estimates = (Array.isArray(raw) ? raw : raw.data || []).map((e) => ({
@@ -91,6 +93,13 @@ for (const e of open) {
 }
 
 for (const e of open) {
+  // 0. Someone said which job it belongs to: --assign <estimate number>=<project id>
+  if (assigned.has(e.number)) {
+    const p = projects.find((x) => x.id === assigned.get(e.number));
+    if (p) plan.attach.push({ e, p, why: "assigned by request" });
+    else console.log(`No White Board job with id ${assigned.get(e.number)} for quote #${e.number}.`);
+    continue;
+  }
   // 1. QuickBooks job as the customer: "26090 - Good Day Meter Loop"
   const m = e.customer.match(/^\s*(\d{2}[0-9A-Za-z]{3,})\s*-\s*/);
   if (m) {
