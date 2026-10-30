@@ -67,7 +67,10 @@ export default function BudgetSection({
   const lastBilledTo = payApps.map((a) => a.logTo).filter((d): d is string => !!d).sort().pop() || null;
   const sortedDates = productionDates.slice().sort();
   const genTo = sortedDates[sortedDates.length - 1] || "";
-  const genFrom = lastBilledTo ? dayAfter(lastBilledTo) : sortedDates[0] || "";
+  const nextFrom = lastBilledTo ? dayAfter(lastBilledTo) : sortedDates[0] || "";
+  // Nothing newer than the last pay application built from logs: show the whole range, with a note.
+  const allBilled = !!lastBilledTo && nextFrom > genTo;
+  const genFrom = allBilled ? sortedDates[0] || "" : nextFrom;
 
   const ordered = sortedPayApps(payApps);
   const latestIndex = ordered.length - 1;
@@ -227,6 +230,7 @@ export default function BudgetSection({
           projectId={projectId}
           defaultFrom={genFrom}
           defaultTo={genTo}
+          note={allBilled ? `Everything logged so far (through ${genTo}) is already on a pay application built from the daily logs.` : undefined}
           onClose={() => setShowGenerate(false)}
           onContinue={(d) => {
             setDraft(d);

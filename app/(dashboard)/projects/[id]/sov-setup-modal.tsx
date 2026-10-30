@@ -33,21 +33,19 @@ export default function SovSetupModal({ projectId, existingItems, onClose }: { p
     if (!lines.length) return setMsg("Nothing to add. Paste rows copied from Excel, one line item per line.");
     let added = 0;
     let updated = 0;
-    setRows((rs) => {
-      const next = rs.slice();
-      for (const [itemNo, description = "", unit = "", bidQty = "", unitPrice = ""] of lines) {
-        if (/^(item|ref|bid item)/i.test(itemNo)) continue; // a header line
-        const at = next.findIndex((r) => r.itemNo === itemNo);
-        if (at >= 0) {
-          next[at] = { ...next[at], description: description || next[at].description, unit: unit || next[at].unit, bidQty: bidQty ? String(num(bidQty)) : next[at].bidQty, unitPrice: unitPrice ? String(num(unitPrice)) : next[at].unitPrice };
-          updated++;
-        } else {
-          next.push({ itemNo, description, unit, bidQty: String(num(bidQty)), unitPrice: String(num(unitPrice)), saved: false });
-          added++;
-        }
+    const next = rows.slice();
+    for (const [itemNo, description = "", unit = "", bidQty = "", unitPrice = ""] of lines) {
+      if (/^(item|ref|bid item)/i.test(itemNo)) continue; // a header line
+      const at = next.findIndex((r) => r.itemNo === itemNo);
+      if (at >= 0) {
+        next[at] = { ...next[at], description: description || next[at].description, unit: unit || next[at].unit, bidQty: bidQty ? String(num(bidQty)) : next[at].bidQty, unitPrice: unitPrice ? String(num(unitPrice)) : next[at].unitPrice };
+        updated++;
+      } else {
+        next.push({ itemNo, description, unit, bidQty: String(num(bidQty)), unitPrice: String(num(unitPrice)), saved: false });
+        added++;
       }
-      return next;
-    });
+    }
+    setRows(next);
     setPaste("");
     setMsg(`Added ${added}${updated ? `, updated ${updated}` : ""}. Review below, then save.`);
   }

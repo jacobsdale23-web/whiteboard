@@ -15,12 +15,14 @@ export default function GenerateFromLogs({
   projectId,
   defaultFrom,
   defaultTo,
+  note,
   onClose,
   onContinue,
 }: {
   projectId: string;
   defaultFrom: string;
   defaultTo: string;
+  note?: string;
   onClose: () => void;
   onContinue: (draft: PayAppDraft) => void;
 }) {
@@ -71,6 +73,8 @@ export default function GenerateFromLogs({
         <p style={{ color: "var(--muted)", fontSize: "0.84rem", marginBottom: 16 }}>
           Adds up everything the foremen logged as installed between these dates and fills it into a new pay application, which you review before saving.
         </p>
+
+        {note && <p style={{ fontSize: "0.84rem", marginBottom: 12, color: "var(--ink-soft)" }}>{note}</p>}
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end", marginBottom: 16 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
