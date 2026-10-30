@@ -299,7 +299,7 @@ function QuoteBlock({
             </button>
             <span style={{ fontSize: "0.76rem", color: "var(--muted)" }}>
               {qb.connected
-                ? "Opens the new invoice in QuickBooks to review and send."
+                ? "Opens the new invoice in QuickBooks to review. Nothing is emailed."
                 : q.qbLink
                   ? "In QuickBooks choose Create invoice, then come back and record the invoice number."
                   : `Find quote #${q.number} in QuickBooks and choose Create invoice.`}

@@ -130,6 +130,11 @@ export class QbError extends Error {}
 type QbFault = { Fault?: { Error?: { Message?: string; Detail?: string }[] } };
 
 export async function qbApi<T = Record<string, unknown>>(companyId: string, method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+  // White Board creates invoices in QuickBooks but never sends or emails anything from there: invoices are downloaded
+  // as PDFs and sent by hand. This stops any QuickBooks "send" or "email" call, whoever writes the code later.
+  if (/\/send(\b|\?|$)|sendTo=|\/email/i.test(path) || /"(BillEmail|EmailStatus|DeliveryInfo)"/.test(body ? JSON.stringify(body) : "")) {
+    throw new QbError("White Board never emails invoices from QuickBooks.");
+  }
   const { token, realmId } = await accessToken(companyId);
   const sep = path.includes("?") ? "&" : "?";
   const res = await fetch(`${qbConfig().apiBase}/v3/company/${realmId}${path}${sep}minorversion=${MINOR_VERSION}`, {

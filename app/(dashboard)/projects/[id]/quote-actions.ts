@@ -137,7 +137,6 @@ type QbEstimate = {
   TotalAmt?: number;
   CustomerRef?: { value: string; name?: string };
   CustomerMemo?: { value?: string };
-  BillEmail?: { Address?: string };
   TxnTaxDetail?: { TotalTax?: number };
   Line?: { DetailType: string; Amount?: number; Description?: string; SalesItemLineDetail?: { ItemRef?: { value: string; name?: string }; Qty?: number; UnitPrice?: number; TaxCodeRef?: { value: string }; ClassRef?: { value: string } } }[];
 };
@@ -146,7 +145,7 @@ export type CreateInvoiceResult = { error?: string; link?: string; docNumber?: s
 
 // One click for a job billed from a quote: creates the invoice in QuickBooks from the quote's own estimate (same lines
 // and message, linked to it so QuickBooks closes the quote), puts the daily logs on it as backup, records it here, and
-// hands back the link so the person can review and send it in QuickBooks. Nothing is emailed.
+// hands back the link so the person can review it in QuickBooks. Nothing is ever emailed from here.
 export async function createInvoiceFromQuote(projectId: string, quoteId: string): Promise<CreateInvoiceResult> {
   try {
     const { project, name } = await requireQuoteAdmin(projectId);
@@ -180,7 +179,8 @@ export async function createInvoiceFromQuote(projectId: string, quoteId: string)
       CustomerRef: { value: billTo },
       TxnDate: today,
       ...(est.CustomerMemo?.value ? { CustomerMemo: { value: est.CustomerMemo.value } } : {}),
-      ...(est.BillEmail?.Address ? { BillEmail: { Address: est.BillEmail.Address } } : {}),
+      // No email address goes on the invoice: it is downloaded as a PDF and sent by hand, and QuickBooks' own automatic
+      // reminders only work when an invoice has an address.
       PrivateNote: `From White Board: quote #${quote.number}`,
       LinkedTxn: [{ TxnId: est.Id, TxnType: "Estimate" }],
       Line: lines.map((l) => ({
