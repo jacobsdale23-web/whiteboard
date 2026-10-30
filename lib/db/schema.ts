@@ -150,6 +150,9 @@ export const dailyLogs = pgTable("daily_logs", {
   // Unit-price jobs: what the crew installed that day, by line item (several items per day). Compiled into the
   // pay app for the dates picked (see lib/production.ts).
   quantities: jsonb("quantities").$type<{ itemNo: string; qty: number }[]>().notNull().default([]),
+  // Jobs billed from a quote: the foreman says the work differed from it (extra, changed or not done); the
+  // description explains. The office sees these before billing.
+  scopeChange: boolean("scope_change").notNull().default(false),
   crew: jsonb("crew").$type<{ name: string; position: string; hours: number }[]>().default([]),
   description: text("description"),
   address: text("address"), // job-site address for this entry (T&M billing)
@@ -496,6 +499,28 @@ export const projectFiles = pgTable("project_files", {
   storageKey: text("storage_key").notNull(),
   fileSize: numeric("file_size").notNull().default("0"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+});
+
+// The QuickBooks quote (estimate) a small job is billed from, kept with the project the way a contract is for a big
+// one. `lines` is the scope as quoted; the PDF itself is a project_files row (`fileId`). The invoice itself is made in
+// QuickBooks; `billed*` records which invoice it became.
+export const projectQuotes = pgTable("project_quotes", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull(),
+  number: text("number").notNull(), // QuickBooks estimate number
+  quoteDate: text("quote_date"),
+  customer: text("customer"),
+  total: numeric("total").notNull().default("0"),
+  status: text("status").notNull().default("Pending"), // as shown in QuickBooks
+  expires: text("expires"),
+  qbLink: text("qb_link"), // opens the estimate in QuickBooks, where "Create invoice" is one click
+  lines: jsonb("lines").$type<{ description: string; qty: number; amount: number }[]>().notNull().default([]),
+  fileId: text("file_id"), // project_files.id of the quote PDF
+  billedInvoiceNo: text("billed_invoice_no"),
+  billedDate: text("billed_date"),
+  billedAmount: numeric("billed_amount"),
+  billedBy: text("billed_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // O&M field report: one per job a crew does, with only the sections that kind of job needs (see lib/om-report.ts).

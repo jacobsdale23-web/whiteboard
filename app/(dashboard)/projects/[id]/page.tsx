@@ -2,13 +2,14 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { projects, milestones, dailyLogs, lineItems, expenses, invoices, payApps, sovItems, sovEntries, billingRates, billingTasks, tmInvoices, jsaForms, leakNumbers, receipts, omReports } from "@/lib/db/schema";
+import { projects, milestones, dailyLogs, lineItems, expenses, invoices, payApps, sovItems, sovEntries, billingRates, billingTasks, tmInvoices, jsaForms, leakNumbers, receipts, omReports, projectQuotes } from "@/lib/db/schema";
 import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
 import { canAccessCompany, getWorkspace, switchCompanyUrl } from "@/lib/auth/company";
 import MilestoneSection from "./milestone-section";
 import LogSection from "./log-section";
 import BudgetSection from "./budget-section";
 import QuickBooksCard from "./quickbooks-card";
+import QuoteCard from "./quote-card";
 import BidReference from "./bid-reference";
 import ProjectDocuments from "./project-documents";
 import OmReportSection from "./om-report-section";
@@ -54,7 +55,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   // O&M crews fill out a field report per job (the sections depend on the kind of job).
   const isOm = project.companyId === "om";
 
-  const [projectMilestones, projectLogs, projectLineItems, projectJsas, projectLeakNumbers, projectTaskNumbers, projectOmReports, projectBilledRanges] = await Promise.all([
+  const [projectMilestones, projectLogs, projectLineItems, projectJsas, projectLeakNumbers, projectTaskNumbers, projectOmReports, projectBilledRanges, projectQuoteRows] = await Promise.all([
     db.select().from(milestones).where(eq(milestones.projectId, id)),
     db.select().from(dailyLogs).where(eq(dailyLogs.projectId, id)),
     db.select().from(lineItems).where(eq(lineItems.projectId, id)),
@@ -64,6 +65,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     isOm ? db.select().from(omReports).where(eq(omReports.projectId, id)) : Promise.resolve([] as typeof omReports.$inferSelect[]),
     // Last day of daily logs already billed on a pay application (everyone sees the date, not the money).
     isTm ? Promise.resolve([] as { logTo: string | null }[]) : db.select({ logTo: payApps.logTo }).from(payApps).where(eq(payApps.projectId, id)),
+    // The quote a small job is billed from. Foremen only learn that one exists (so they can flag a change); prices stay admin-only.
+    isTm ? Promise.resolve([] as typeof projectQuotes.$inferSelect[]) : db.select().from(projectQuotes).where(eq(projectQuotes.projectId, id)),
   ]);
 
   // Unit-price jobs with a line-item list: the daily log records what was installed per line item.
@@ -177,6 +180,35 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         <QuickBooksCard companyId={project.companyId} projectNumber={project.projectNumber} projectName={project.name} wb={whiteboardFigures(budgetData)} />
       )}
 
+      {/* Small jobs billed from a quote. Jobs with a schedule of values or pay apps are billed another way, so the card only shows there once a quote is attached. */}
+      {isAdmin && !readOnly && budgetData && !isTm && (projectQuoteRows.length > 0 || (!budgetData.payApps.length && !budgetData.sovItems.length)) && (
+        <QuoteCard
+          projectId={id}
+          customer={project.customer}
+          jobStatus={project.status}
+          quotes={projectQuoteRows
+            .slice()
+            .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+            .map((q) => ({
+              id: q.id,
+              number: q.number,
+              quoteDate: q.quoteDate,
+              customer: q.customer,
+              total: Number(q.total),
+              status: q.status,
+              expires: q.expires,
+              qbLink: q.qbLink,
+              lines: q.lines || [],
+              fileId: q.fileId,
+              billedInvoiceNo: q.billedInvoiceNo,
+              billedDate: q.billedDate,
+              billedAmount: q.billedAmount == null ? null : Number(q.billedAmount),
+              billedBy: q.billedBy,
+            }))}
+          logs={projectLogs.map((l) => ({ id: l.id, date: l.date, foreman: l.foreman, description: l.description, scopeChange: l.scopeChange }))}
+        />
+      )}
+
       {!readOnly && <div style={{ marginBottom: 20 }}>
         {isAdmin && budgetData ? (
           <>
@@ -282,6 +314,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         isAdmin={isAdmin}
         production={production}
         billedThrough={billedThrough}
+        hasQuote={projectQuoteRows.length > 0}
         readOnly={readOnly}
       />
     </div>

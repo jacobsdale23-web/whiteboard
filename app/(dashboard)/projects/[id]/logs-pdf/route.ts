@@ -56,6 +56,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       quantities: (l.quantities || []).map((q) => ({ itemNo: q.itemNo, description: itemDesc.get(q.itemNo) || null, unit: itemUnit.get(q.itemNo) || null, qty: q.qty })),
       crew: l.crew || [],
       description: l.description,
+      scopeChange: l.scopeChange,
     })),
     rangeLabel
   );

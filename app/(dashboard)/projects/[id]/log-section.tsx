@@ -14,6 +14,7 @@ type LogEntry = {
   foreman: string | null;
   lineItem: string | null;
   quantities: { itemNo: string; qty: number }[] | null;
+  scopeChange: boolean;
   crew: { name: string; position: string; hours: number }[] | null;
   description: string | null;
   address: string | null;
@@ -75,6 +76,7 @@ function LogForm({
   usualCrews,
   production,
   billedThrough,
+  hasQuote,
   onDone,
 }: {
   projectId: string;
@@ -86,6 +88,7 @@ function LogForm({
   usualCrews: Record<string, string[]>;
   production: boolean;
   billedThrough: string | null;
+  hasQuote: boolean;
   onDone: () => void;
 }) {
   const editing = !!initial;
@@ -348,6 +351,15 @@ function LogForm({
         + Add Crew Member
       </button>
 
+      {(hasQuote || initial?.scopeChange) && (
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 14, fontSize: "0.85rem", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", background: "var(--surface-2)" }}>
+          <input type="checkbox" name="scopeChange" defaultChecked={!!initial?.scopeChange} style={{ marginTop: 3 }} />
+          <span>
+            <strong>This work is different from the quote.</strong> Check this if there was extra work, a change to what was quoted, or something quoted that wasn&apos;t done, and explain below. Leave it unchecked if it went as quoted.
+          </span>
+        </label>
+      )}
+
       <Field label="Description of Work">
         <textarea
           ref={descRef}
@@ -412,6 +424,7 @@ export default function LogSection({
   isAdmin,
   production,
   billedThrough,
+  hasQuote,
   readOnly = false,
 }: {
   projectId: string;
@@ -426,6 +439,8 @@ export default function LogSection({
   production: boolean;
   // Last day already included in a pay application built from the logs, if any.
   billedThrough: string | null;
+  // The job has a quote attached, so each log says whether the work matched it.
+  hasQuote: boolean;
   readOnly?: boolean;
 }) {
   const [showForm, setShowForm] = useState(false);
@@ -435,7 +450,7 @@ export default function LogSection({
   const [to, setTo] = useState("");
   const [, startTransition] = useTransition();
   const sorted = logs.slice().sort((a, b) => b.date.localeCompare(a.date));
-  const formProps = { projectId, lineItems, leakNumbers, taskNumbers, people, usualCrews, production, billedThrough };
+  const formProps = { projectId, lineItems, leakNumbers, taskNumbers, people, usualCrews, production, billedThrough, hasQuote };
 
   const pdfUrl = (qs: string) => `/projects/${projectId}/logs-pdf?${qs}`;
   const allSelected = sorted.length > 0 && selected.length === sorted.length;
@@ -488,7 +503,14 @@ export default function LogSection({
             <div key={l.id} style={rowStyle}>
               {isAdmin && <input type="checkbox" checked={selected.includes(l.id)} onChange={() => toggle(l.id)} style={{ marginTop: 4 }} aria-label="Select for PDF export" />}
               <div style={{ flex: 1 }}>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.72rem", color: "var(--muted)" }}>{l.date}</div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.72rem", color: "var(--muted)" }}>
+                  {l.date}
+                  {l.scopeChange && (
+                    <span style={{ marginLeft: 8, background: "var(--danger)", color: "#fff", fontSize: "0.64rem", fontWeight: 700, padding: "2px 7px", borderRadius: 20, textTransform: "uppercase", fontFamily: "inherit" }}>
+                      Different from quote
+                    </span>
+                  )}
+                </div>
                 <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--ink-soft)" }}>
                   Leak #: {l.leakNumber}
                   {l.foreman ? ` · Foreman: ${l.foreman}` : ""}

@@ -15,6 +15,8 @@ export type PdfLog = {
   quantities: { itemNo: string; description: string | null; unit: string | null; qty: number }[];
   crew: { name: string; position: string; hours: number }[];
   description: string | null;
+  // The foreman reported the work differed from the quote (explained in the description).
+  scopeChange?: boolean;
 };
 
 export type PdfProject = { name: string; projectNumber: string | null; customer: string | null; location: string | null; companyName: string };
@@ -61,6 +63,7 @@ export async function buildDailyLogsPdf(project: PdfProject, logs: PdfLog[], ran
 
     w.text("Work performed", { bold: true });
     w.text(l.description || "-", { indent: 8 });
+    if (l.scopeChange) w.text("Note: this work differs from the quote.", { indent: 8, color: [0.6, 0.15, 0.1] });
     w.gap(4);
 
     if (l.quantities.length) {

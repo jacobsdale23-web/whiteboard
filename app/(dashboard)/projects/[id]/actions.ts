@@ -58,6 +58,7 @@ async function prepareLog(project: { id: string; companyId: string; billingType:
   const address = String(formData.get("address") || "").trim() || null;
   const taskNumber = pickedValue(formData, "taskNumber") || null;
   const locusviewNumber = String(formData.get("locusviewNumber") || "").trim() || null;
+  const scopeChange = formData.get("scopeChange") === "on";
 
   const names = formData.getAll("crewName");
   const positions = formData.getAll("crewPosition");
@@ -92,7 +93,7 @@ async function prepareLog(project: { id: string; companyId: string; billingType:
     if (!known.length) await db.insert(billingTasks).values({ id: randomUUID(), projectId, taskNumber });
   }
 
-  return { values: { date, leakNumber, foreman: foremanName, lineItem, quantities, crew: crewFinal, description, address, taskNumber, locusviewNumber } };
+  return { values: { date, leakNumber, foreman: foremanName, lineItem, quantities, scopeChange, crew: crewFinal, description, address, taskNumber, locusviewNumber } };
 }
 
 export async function addLog(projectId: string, formData: FormData): Promise<{ error?: string }> {

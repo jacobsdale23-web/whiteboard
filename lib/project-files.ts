@@ -1,5 +1,5 @@
 // Kinds of document kept on a project, and the file types accepted (by extension -> the content type used for the upload).
-export const PROJECT_FILE_KINDS = ["Original bid", "Contract", "Change order", "Other"];
+export const PROJECT_FILE_KINDS = ["Original bid", "Quote", "Contract", "Change order", "Other"];
 
 export const PROJECT_FILE_TYPES: Record<string, string> = {
   pdf: "application/pdf",
