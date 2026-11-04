@@ -568,7 +568,7 @@ export const omReports = pgTable("om_reports", {
   id: text("id").primaryKey(),
   projectId: text("project_id").notNull(),
   date: text("date").notNull(),
-  jobType: text("job_type").notNull(), // leak | service | meter | riser | other
+  jobType: text("job_type").notNull(), // leak | service | meter | riser | other | survey
   extras: jsonb("extras").$type<string[]>().default([]), // sections added beyond the job type's own
   data: jsonb("data").$type<Record<string, string | string[] | Record<string, string>[]>>().default({}),
   photos: jsonb("photos").$type<{ key: string; caption: string }[]>().default([]),

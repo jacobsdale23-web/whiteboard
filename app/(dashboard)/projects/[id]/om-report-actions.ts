@@ -9,7 +9,7 @@ import { rememberNames } from "@/lib/people";
 import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
 import { canOpenProject, requireProject } from "@/lib/auth/company";
 import { deleteObject, getDownloadUrl, getUploadUrl } from "@/lib/storage/s3";
-import { MAX_OM_PHOTOS, addableSections, cleanOmData, omJobType, type OmData, type OmPhoto } from "@/lib/om-report";
+import { MAX_OM_PHOTOS, addableSections, cleanOmData, omJobType, omNarrative, type OmData, type OmPhoto } from "@/lib/om-report";
 
 export type OmReportInput = {
   date: string;
@@ -74,7 +74,8 @@ export async function saveOmReport(projectId: string, input: OmReportInput, repo
   // Billing info is the office's field: keep what an admin entered when a crew member edits the report.
   if (!isAdmin && existing?.data?.officeJobInfo) data.officeJobInfo = existing.data.officeJobInfo;
   if (!data.address) return { error: "Enter the job address." };
-  if (!data.narrative) return { error: "Describe what happened and how the work was done." };
+  const narrative = omNarrative(jt.id);
+  if (narrative.required && !data.narrative) return { error: narrative.missing };
   if (jt.sections.includes("leak") && !data.leakFound) return { error: "Say whether a leak was found." };
 
   const photos = (input.photos || []).slice(0, MAX_OM_PHOTOS).map((p) => ({ key: String(p.key), caption: String(p.caption || "").trim().slice(0, 200) }));

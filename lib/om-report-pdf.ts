@@ -1,7 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import { addPageNumbers, clean, MARGIN, PAGE_H, PAGE_W } from "@/lib/pdf-writer";
 import { OM_LOGO_PNG_BASE64 } from "@/lib/om-logo";
-import { OM_HEADER_FIELDS, OM_NARRATIVE, fieldVisible, formatOmDate, formatOmValue, omJobType, sectionsFor, type OmData, type OmField } from "@/lib/om-report";
+import { OM_HEADER_FIELDS, OM_NARRATIVE, fieldVisible, formatOmDate, formatOmValue, omJobType, omNarrative, sectionsFor, type OmData, type OmField } from "@/lib/om-report";
 
 export type OmPdfReport = {
   date: string;
@@ -150,9 +150,12 @@ export async function buildOmReportPdf(project: OmPdfProject, report: OmPdfRepor
     s.fields(fs, report.data);
   }
 
+  // Repair jobs print the original wording; a job with its own notes box (the site survey) uses that title.
+  const narrative = omNarrative(report.jobType);
+  const ownNotes = !!jt?.narrative;
   s.y -= 6;
-  s.bar("Describe what happened and how repairs were made");
-  s.fields([{ ...OM_NARRATIVE, label: "Work performed" }], report.data);
+  s.bar(ownNotes ? narrative.title : "Describe what happened and how repairs were made");
+  s.fields([{ ...OM_NARRATIVE, label: ownNotes ? "Job notes" : "Work performed" }], report.data);
 
   // Sign-off
   s.y -= 6;

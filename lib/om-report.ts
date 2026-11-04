@@ -174,6 +174,23 @@ export const OM_SECTIONS: Record<string, OmSection> = {
       },
     ],
   },
+  materials: {
+    id: "materials",
+    title: "Materials used",
+    fields: [{ key: "materials", label: "What was used", type: "textarea", wide: true, placeholder: "Type in what was used, e.g. 20 ft of 2 in. PE, 3 couplings, 1 tee" }],
+  },
+  survey: {
+    id: "survey",
+    title: "New job information",
+    hint: "What the office needs to price or schedule this job.",
+    fields: [
+      { key: "serviceInfo", label: "Service info", type: "text", wide: true, placeholder: "e.g. new 3/4 in. service for a house" },
+      { key: "mainSize", label: "Main size", type: "text", placeholder: "e.g. 2 in. PE" },
+      { key: "footage", label: "Footage", type: "text", placeholder: "e.g. 85 ft" },
+      { key: "riserAvailable", label: "Riser available?", type: "yesno" },
+      { key: "boreOrCut", label: "Bore or open cut", type: "choice", options: ["Bore", "Open cut"] },
+    ],
+  },
   meter: {
     id: "meter",
     title: "Meter information",
@@ -193,27 +210,41 @@ export const OM_SECTIONS: Record<string, OmSection> = {
 };
 
 // Order the sections print in, whatever order they were added.
-const SECTION_ORDER = ["leak", "excavation", "riser", "pipe", "pressure", "plastic", "meter"];
+const SECTION_ORDER = ["survey", "leak", "excavation", "riser", "pipe", "pressure", "plastic", "materials", "meter"];
 
 export const OM_NARRATIVE: OmField = { key: "narrative", label: "Describe what happened and how repairs were made", type: "textarea", wide: true };
 
-export type OmJobType = { id: string; label: string; blurb: string; sections: string[]; preset?: OmData };
+// The closing free-text box. Repair-type jobs ask what was done and require it; a job survey just takes notes.
+export type OmNarrative = { title: string; label: string; required: boolean; missing: string };
+const DEFAULT_NARRATIVE: OmNarrative = { title: "What was done", label: OM_NARRATIVE.label, required: true, missing: "Describe what happened and how the work was done." };
+
+export type OmJobType = { id: string; label: string; blurb: string; sections: string[]; preset?: OmData; narrative?: Partial<OmNarrative> };
 
 export const OM_JOB_TYPES: OmJobType[] = [
-  { id: "leak", label: "Gas leak repair", blurb: "Leak details, pipe, pressure test, plastic components", sections: ["leak", "pipe", "pressure", "plastic"] },
-  { id: "service", label: "New service", blurb: "Service pipe, pressure test, plastic components, meter", sections: ["pipe", "pressure", "plastic", "meter"], preset: { pipeKind: "Service" } },
-  { id: "meter", label: "Meter change", blurb: "Old and new meter", sections: ["meter"] },
-  { id: "riser", label: "Riser check / pressure test", blurb: "Riser hot check and pressure test", sections: ["riser", "pressure"] },
-  { id: "other", label: "Other maintenance", blurb: "Just the basics; add any section you need", sections: [] },
+  { id: "leak", label: "Gas leak repair", blurb: "Leak details, pipe, pressure test, plastic components, materials", sections: ["leak", "pipe", "pressure", "plastic", "materials"] },
+  { id: "service", label: "New service", blurb: "Service pipe, pressure test, plastic components, materials, meter", sections: ["pipe", "pressure", "plastic", "materials", "meter"], preset: { pipeKind: "Service" } },
+  { id: "meter", label: "Meter change", blurb: "Old and new meter, materials", sections: ["meter", "materials"] },
+  { id: "riser", label: "Riser check / pressure test", blurb: "Riser hot check, pressure test, materials", sections: ["riser", "pressure", "materials"] },
+  { id: "other", label: "Other maintenance", blurb: "Materials; add any section you need", sections: ["materials"] },
+  {
+    id: "survey",
+    label: "New job site info",
+    blurb: "Going out to gather info: service, main size, footage, riser, bore or open cut",
+    sections: ["survey"],
+    narrative: { title: "Notes", label: "Notes (access, obstacles, anything else the office should know)", required: false },
+  },
 ];
 
 export const omJobType = (id: string) => OM_JOB_TYPES.find((j) => j.id === id);
 
-// Sections that can still be added to this job (excavation is automatic, never added by hand).
+export const omNarrative = (jobTypeId: string): OmNarrative => ({ ...DEFAULT_NARRATIVE, ...(omJobType(jobTypeId)?.narrative ?? {}) });
+
+// Sections that can still be added to this job (excavation is automatic and the job survey is its own job type,
+// so neither is ever added by hand).
 export function addableSections(jobTypeId: string, extras: string[]): OmSection[] {
   const jt = omJobType(jobTypeId);
   if (!jt) return [];
-  return SECTION_ORDER.filter((id) => id !== "excavation" && !jt.sections.includes(id) && !extras.includes(id)).map((id) => OM_SECTIONS[id]);
+  return SECTION_ORDER.filter((id) => id !== "excavation" && id !== "survey" && !jt.sections.includes(id) && !extras.includes(id)).map((id) => OM_SECTIONS[id]);
 }
 
 export function sectionsFor(jobTypeId: string, extras: string[], data: OmData): OmSection[] {

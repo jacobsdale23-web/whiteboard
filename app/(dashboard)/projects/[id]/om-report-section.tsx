@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { OM_HEADER_FIELDS, OM_NARRATIVE, formatOmDate, formatOmValue, fieldVisible, omJobType, sectionsFor, type OmField } from "@/lib/om-report";
+import { OM_HEADER_FIELDS, OM_NARRATIVE, formatOmDate, formatOmValue, fieldVisible, omJobType, omNarrative, sectionsFor, type OmField } from "@/lib/om-report";
 import OmReportForm, { type OmReportRow } from "./om-report-form";
 import { deleteOmReport, getOmPhotoUrls } from "./om-report-actions";
 
@@ -123,7 +123,7 @@ function Detail({ report, photos, isAdmin }: { report: OmReportRow; photos?: Pho
   const groups: { title: string; fields: OmField[] }[] = [
     { title: "Job", fields: OM_HEADER_FIELDS.filter((f) => !f.officeOnly || isAdmin) },
     ...sectionsFor(report.jobType, report.extras, report.data).map((s) => ({ title: s.title, fields: s.fields.filter((f) => fieldVisible(f, report.data)) })),
-    { title: "What was done", fields: [OM_NARRATIVE] },
+    { title: omNarrative(report.jobType).title, fields: [OM_NARRATIVE] },
   ];
   return (
     <div style={{ marginTop: 10 }}>

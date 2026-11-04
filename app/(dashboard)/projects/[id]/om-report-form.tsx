@@ -11,6 +11,7 @@ import {
   addableSections,
   fieldVisible,
   omJobType,
+  omNarrative,
   sectionsFor,
   type OmData,
   type OmField,
@@ -83,6 +84,7 @@ export default function OmReportForm({
   }, [initialId, hadPhotos, projectId]);
 
   const jt = omJobType(jobType);
+  const narrative = omNarrative(jobType);
   const sections = jt ? sectionsFor(jobType, extras, data) : [];
   const addable = jt ? addableSections(jobType, extras) : [];
 
@@ -224,8 +226,8 @@ export default function OmReportForm({
             </div>
           )}
 
-          <Bar title="What was done" />
-          <Field label={OM_NARRATIVE.label} required wide>
+          <Bar title={narrative.title} />
+          <Field label={narrative.label} required={narrative.required} wide>
             <FieldInput f={OM_NARRATIVE} value={data.narrative} onChange={(v) => setValue("narrative", v)} />
           </Field>
 
@@ -292,7 +294,7 @@ function FieldInput({ f, value, onChange }: { f: OmField; value: OmValue | undef
   const str = typeof value === "string" ? value : "";
   switch (f.type) {
     case "textarea":
-      return <textarea rows={4} value={str} onChange={(e) => onChange(e.target.value)} style={{ ...inputStyle, resize: "vertical" }} />;
+      return <textarea rows={4} value={str} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} style={{ ...inputStyle, resize: "vertical" }} />;
     case "number":
       return <input type="number" inputMode="decimal" step="any" min="0" value={str} onChange={(e) => onChange(e.target.value)} style={inputStyle} />;
     case "date":
