@@ -345,10 +345,12 @@ export async function saveOqQual(
   if (!qualifiedDate) return { error: "Enter the date they qualified." };
 
   const task = await db.query.oqExamTasks.findFirst({ where: eq(oqExamTasks.taskCode, taskCode) });
-  if (!task) return { error: "Unknown OQ task." };
-
-  const values = { taskName: task.taskName, qualifiedDate, expiresDate: isoDate(data.expiresDate), notes: orNull(data.notes) };
   const existing = await db.query.hrOqQuals.findFirst({ where: and(eq(hrOqQuals.employeeId, employeeId), eq(hrOqQuals.taskCode, taskCode)) });
+  // Qualifications brought in from EWN can have codes that aren't in the practice-test list; renewing one keeps its name.
+  const taskName = task?.taskName ?? existing?.taskName;
+  if (!taskName) return { error: "Unknown OQ task." };
+
+  const values = { taskName, qualifiedDate, expiresDate: isoDate(data.expiresDate), notes: orNull(data.notes) };
   if (existing) await db.update(hrOqQuals).set(values).where(eq(hrOqQuals.id, existing.id));
   else await db.insert(hrOqQuals).values({ id: randomUUID(), employeeId, taskCode, ...values });
   refresh();
@@ -369,9 +371,13 @@ export async function saveOqQualBatch(
 ): Promise<Result> {
   if (!(await requireHR())) return DENIED;
   if (!data.taskCodes.length) return { error: "Pick at least one task." };
-  const valid = await db.select().from(oqExamTasks).where(inArray(oqExamTasks.taskCode, data.taskCodes));
-  if (!valid.length) return { error: "Unknown OQ tasks." };
-  for (const code of new Set(valid.map((t) => t.taskCode))) {
+  const [valid, held] = await Promise.all([
+    db.select().from(oqExamTasks).where(inArray(oqExamTasks.taskCode, data.taskCodes)),
+    db.select().from(hrOqQuals).where(and(eq(hrOqQuals.employeeId, employeeId), inArray(hrOqQuals.taskCode, data.taskCodes))),
+  ]);
+  const codes = new Set([...valid.map((t) => t.taskCode), ...held.map((q) => q.taskCode)]);
+  if (!codes.size) return { error: "Unknown OQ tasks." };
+  for (const code of codes) {
     const res = await saveOqQual(employeeId, { taskCode: code, qualifiedDate: data.qualifiedDate, expiresDate: data.expiresDate, notes: "" });
     if (res.error) return res;
   }
