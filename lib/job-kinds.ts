@@ -30,6 +30,25 @@ export function cleanJobKind(v: unknown): JobKind {
 
 export const isTapKind = (kind: unknown) => cleanJobKind(kind) !== "standard";
 
+// The calendar's job filter: everything, the whole tap crew's work (both kinds), or one kind on its own.
+export const KIND_FILTERS = [
+  { value: "all", label: "All jobs" },
+  { value: "taps", label: "Hot tap crew" },
+  { value: "hot_tap", label: "Hot tap" },
+  { value: "fwi_hot_tap", label: "FWI hot tap" },
+] as const;
+export type KindFilter = (typeof KIND_FILTERS)[number]["value"];
+
+export function cleanKindFilter(v: unknown): KindFilter {
+  return KIND_FILTERS.some((f) => f.value === v) ? (v as KindFilter) : "all";
+}
+
+export function kindMatchesFilter(filter: KindFilter, kind: unknown): boolean {
+  if (filter === "all") return true;
+  const k = cleanJobKind(kind);
+  return filter === "taps" ? k !== "standard" : k === filter;
+}
+
 // Opportunity types that are tap jobs, so winning one starts a project of the right kind.
 export const OPP_TYPE_HOT_TAP = "Hot Tap";
 export const OPP_TYPE_FWI_HOT_TAP = "FWI Hot Tap";

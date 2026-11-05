@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { computeBar, addDays, barColor, tapTag, type GanttProject, type Bar } from "@/lib/gantt";
-import { oppTypeColor } from "@/lib/job-kinds";
+import { JOB_KIND_COLORS, KIND_FILTERS, cleanKindFilter, jobKindFromOppType, kindMatchesFilter, oppTypeColor, type KindFilter } from "@/lib/job-kinds";
 import GanttChart from "./gantt-chart";
 import StatusDialog from "./status-dialog";
 
@@ -69,12 +69,33 @@ function useItems(projects: GanttProject[]): Item[] {
   }, [projects]);
 }
 
-export default function CalendarView({ projects, events, readOnly }: { projects: GanttProject[]; events: CalendarEvent[]; readOnly: boolean }) {
+const FILTER_KEY = "wb-calendar-job-filter";
+
+export default function CalendarView({ projects: allProjects, events: allEvents, readOnly }: { projects: GanttProject[]; events: CalendarEvent[]; readOnly: boolean }) {
   const [mode, setMode] = useState<Mode>("timeline");
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
-  const items = useItems(projects);
+  const [filter, setFilter] = useState<KindFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selected = selectedId ? projects.find((p) => p.id === selectedId) ?? null : null;
+
+  // Remember the last filter on this device (best effort: storage can be unavailable).
+  useEffect(() => {
+    try {
+      setFilter(cleanKindFilter(localStorage.getItem(FILTER_KEY)));
+    } catch {}
+  }, []);
+  function pickFilter(f: KindFilter) {
+    setFilter(f);
+    try {
+      localStorage.setItem(FILTER_KEY, f);
+    } catch {}
+  }
+
+  const projects = useMemo(() => allProjects.filter((p) => kindMatchesFilter(filter, p.jobKind)), [allProjects, filter]);
+  const events = useMemo(() => allEvents.filter((e) => kindMatchesFilter(filter, jobKindFromOppType(e.oppType))), [allEvents, filter]);
+  const items = useItems(projects);
+  const selected = selectedId ? allProjects.find((p) => p.id === selectedId) ?? null : null;
+  const filtered = filter !== "all";
+  const filterLabel = KIND_FILTERS.find((f) => f.value === filter)?.label ?? "";
 
   const step = mode === "week" ? 7 : 1;
   const today = startOfDay(new Date());
@@ -117,7 +138,38 @@ export default function CalendarView({ projects, events, readOnly }: { projects:
         )}
       </div>
 
-      {mode === "timeline" && (
+      <div role="group" aria-label="Filter jobs" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 16 }}>
+        <span style={{ fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 700, color: "var(--muted)" }}>Show</span>
+        {KIND_FILTERS.map((f) => {
+          const on = filter === f.value;
+          const color = f.value === "hot_tap" ? JOB_KIND_COLORS.hot_tap : f.value === "fwi_hot_tap" ? JOB_KIND_COLORS.fwi_hot_tap : f.value === "taps" ? JOB_KIND_COLORS.hot_tap : null;
+          return (
+            <button
+              key={f.value}
+              type="button"
+              aria-pressed={on}
+              onClick={() => pickFilter(f.value)}
+              style={{
+                border: `1px solid ${on ? color ?? "var(--rust)" : "var(--border)"}`,
+                background: on ? color ?? "var(--rust)" : "var(--surface)",
+                color: on ? "#fff" : "var(--ink)",
+                borderRadius: 20,
+                padding: "6px 14px",
+                fontWeight: 600,
+                fontSize: "0.82rem",
+                cursor: "pointer",
+              }}
+            >
+              {f.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {mode === "timeline" && filtered && !items.length && !events.length ? (
+        <div style={{ color: "var(--muted)", padding: 20 }}>Nothing on the calendar for “{filterLabel}”. Pick “All jobs” to see everything.</div>
+      ) : null}
+      {mode === "timeline" && !(filtered && !items.length && !events.length) && (
         <>
           <GanttChart projects={projects} onSelect={setSelectedId} />
           <UpcomingEvents events={events} today={today} />
