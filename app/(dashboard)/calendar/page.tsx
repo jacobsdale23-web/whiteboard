@@ -23,6 +23,7 @@ export default async function CalendarPage() {
       location: o.location,
       date: o.bidDueDate as string,
       kind: o.kind === "Meeting" ? ("Meeting" as const) : ("Bid Due" as const),
+      oppType: o.oppType,
       customer: o.customer,
       estimator: o.estimator,
     }));
@@ -43,6 +44,7 @@ export default async function CalendarPage() {
           duration: p.duration,
           value: readOnly ? null : p.value,
           crew: p.crew,
+          jobKind: p.jobKind,
         }))}
       />
     </section>

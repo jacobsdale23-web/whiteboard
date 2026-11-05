@@ -8,6 +8,7 @@ import { opportunities } from "@/lib/db/schema";
 import OpportunityFormModal from "./opportunity-form-modal";
 import StatusPill from "./status-pill";
 import DeleteButton from "./delete-button";
+import { oppTypeColor } from "@/lib/job-kinds";
 
 type OpportunityRow = typeof opportunities.$inferSelect;
 
@@ -86,7 +87,11 @@ function OpportunityCard({ o }: { o: OpportunityRow }) {
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
         <Pill color={o.kind === "Meeting" ? "shop" : "upcoming"}>{o.kind}</Pill>
-        <Pill color="neutral">{o.oppType}</Pill>
+        {oppTypeColor(o.oppType) ? (
+          <span style={{ background: oppTypeColor(o.oppType)!, color: "#fff", borderRadius: 20, padding: "3px 10px", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase" }}>{o.oppType}</span>
+        ) : (
+          <Pill color="neutral">{o.oppType}</Pill>
+        )}
         <StatusPill
           id={o.id}
           jobName={o.jobName}

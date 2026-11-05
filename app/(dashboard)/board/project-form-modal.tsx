@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { saveProject, deleteProject, type ProjectInput } from "./actions";
+import { JOB_KINDS, JOB_KIND_HINTS, JOB_KIND_LABELS, cleanJobKind } from "@/lib/job-kinds";
+
+export type ParentOption = { id: string; label: string };
 
 type ProjectRow = {
   id: string;
@@ -16,6 +19,8 @@ type ProjectRow = {
   billingType: string;
   projectNumber: string | null;
   customer: string | null;
+  jobKind?: string;
+  billedThroughProjectId?: string | null;
 };
 type CrewMember = { id: string; name: string };
 
@@ -23,7 +28,7 @@ const STATUSES = [
   { value: "upcoming", label: "upcoming" },
   { value: "active", label: "active" },
   { value: "on_hold", label: "on hold (paused, we'll return to it)" },
-  { value: "complete", label: "complete (stays on calendar until billed)" },
+  { value: "complete", label: "complete (stays on calendar until billed; an FWI hot tap closes out on its own)" },
   { value: "billed", label: "billed (moves to Completed, off calendar)" },
   { value: "canceled", label: "canceled (moves to Completed, off calendar)" },
 ];
@@ -32,12 +37,15 @@ const BILLING_TYPES = [
   { value: "tm", label: "T&M" },
 ];
 
-export default function ProjectFormModal({ project, crewList }: { project?: ProjectRow; crewList: CrewMember[] }) {
+export default function ProjectFormModal({ project, crewList, parentOptions = [] }: { project?: ProjectRow; crewList: CrewMember[]; parentOptions?: ParentOption[] }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [billingType, setBillingType] = useState(project?.billingType || "lump_sum");
+  const [jobKind, setJobKind] = useState(cleanJobKind(project?.jobKind));
   const isEdit = !!project;
+  const isFwiTap = jobKind === "fwi_hot_tap";
+  const parents = parentOptions.filter((p) => p.id !== project?.id);
 
   async function handleSubmit(formData: FormData) {
     setError("");
@@ -52,9 +60,11 @@ export default function ProjectFormModal({ project, crewList }: { project?: Proj
       duration: String(formData.get("duration") || "").trim() || null,
       value: formData.get("value") === "" ? null : Number(formData.get("value")),
       crew,
-      billingType: String(formData.get("billingType") || "lump_sum"),
+      billingType: isFwiTap ? "lump_sum" : String(formData.get("billingType") || "lump_sum"),
       projectNumber: String(formData.get("projectNumber") || "").trim() || null,
       customer: String(formData.get("customer") || "").trim() || null,
+      jobKind,
+      billedThroughProjectId: isFwiTap ? String(formData.get("billedThroughProjectId") || "") || null : null,
     };
     try {
       await saveProject(project?.id ?? null, data);
@@ -104,6 +114,31 @@ export default function ProjectFormModal({ project, crewList }: { project?: Proj
           <form action={handleSubmit} style={modalStyle} onClick={(e) => e.stopPropagation()}>
             <h2 style={{ marginBottom: 16, textTransform: "uppercase" }}>{isEdit ? "Edit Project" : "New Project"}</h2>
 
+            <Field label="Job Type">
+              <select value={jobKind} onChange={(e) => setJobKind(cleanJobKind(e.target.value))} style={inputStyle}>
+                {JOB_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {JOB_KIND_LABELS[k]}
+                  </option>
+                ))}
+              </select>
+              {JOB_KIND_HINTS[jobKind] && <div style={{ color: "var(--muted)", fontSize: "0.74rem", marginTop: 4, textTransform: "none", fontWeight: 400 }}>{JOB_KIND_HINTS[jobKind]}</div>}
+            </Field>
+            {isFwiTap && (
+              <Field label="Billed Through (the job this tap is for)">
+                <select name="billedThroughProjectId" defaultValue={project?.billedThroughProjectId || ""} style={inputStyle}>
+                  <option value="">Not picked yet</option>
+                  {parents.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+                <div style={{ color: "var(--muted)", fontSize: "0.74rem", marginTop: 4, textTransform: "none", fontWeight: 400 }}>
+                  It will not be billed on its own. It shows on that job so the tap goes on that job&apos;s invoice.
+                </div>
+              </Field>
+            )}
             <Field label="Project Name">
               <input type="text" name="name" required defaultValue={project?.name} style={inputStyle} />
             </Field>
@@ -122,15 +157,17 @@ export default function ProjectFormModal({ project, crewList }: { project?: Proj
                 ))}
               </select>
             </Field>
-            <Field label="Billing Type">
-              <select name="billingType" value={billingType} onChange={(e) => setBillingType(e.target.value)} style={inputStyle}>
-                {BILLING_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            {!isFwiTap && (
+              <Field label="Billing Type">
+                <select name="billingType" value={billingType} onChange={(e) => setBillingType(e.target.value)} style={inputStyle}>
+                  {BILLING_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
             <Field label="QuickBooks Project #">
               <input
                 type="text"
@@ -143,7 +180,9 @@ export default function ProjectFormModal({ project, crewList }: { project?: Proj
                 style={inputStyle}
               />
               <div style={{ color: "var(--muted)", fontSize: "0.74rem", marginTop: 4 }}>
-                Create the project in QuickBooks first, then enter its number here exactly. The field clocks in by this number.
+                {isFwiTap
+                  ? "An FWI hot tap has no QuickBooks job of its own, so this can stay blank."
+                  : "Create the project in QuickBooks first, then enter its number here exactly. The field clocks in by this number."}
               </div>
             </Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>

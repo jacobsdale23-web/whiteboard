@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import ProjectFormModal from "./project-form-modal";
+import ProjectFormModal, { type ParentOption } from "./project-form-modal";
+import { JOB_KIND_COLORS, JOB_KIND_LABELS, cleanJobKind } from "@/lib/job-kinds";
 
 type BoardProject = {
   id: string;
@@ -18,6 +19,9 @@ type BoardProject = {
   billingType: string;
   projectNumber: string | null;
   customer: string | null;
+  jobKind: string;
+  billedThroughProjectId: string | null;
+  billedThroughName: string | null; // the job an FWI hot tap is billed through
 };
 type CompletedProject = { id: string; name: string; projectNumber: string | null; location: string | null; customer: string | null; endDate: string | null };
 type CrewMember = { id: string; name: string };
@@ -44,6 +48,7 @@ export default function BoardView({
   completed,
   foremen,
   atShop,
+  parentOptions,
   readOnly = false,
 }: {
   active: BoardProject[];
@@ -52,6 +57,7 @@ export default function BoardView({
   completed: CompletedProject[];
   foremen: CrewMember[];
   atShop: CrewMember[];
+  parentOptions: ParentOption[];
   readOnly?: boolean;
 }) {
   const router = useRouter();
@@ -60,9 +66,9 @@ export default function BoardView({
 
   const shown = useMemo(() => {
     if (!searching) return { active, upcoming, onHold, completed: [] as CompletedProject[], completedTotal: 0 };
-    const a = active.filter((p) => matches(q, p.name, p.projectNumber, p.location, p.customer, p.crew));
-    const u = upcoming.filter((p) => matches(q, p.name, p.projectNumber, p.location, p.customer, p.crew));
-    const h = onHold.filter((p) => matches(q, p.name, p.projectNumber, p.location, p.customer, p.crew));
+    const a = active.filter((p) => matches(q, p.name, p.projectNumber, p.location, p.customer, p.crew, JOB_KIND_LABELS[cleanJobKind(p.jobKind)]));
+    const u = upcoming.filter((p) => matches(q, p.name, p.projectNumber, p.location, p.customer, p.crew, JOB_KIND_LABELS[cleanJobKind(p.jobKind)]));
+    const h = onHold.filter((p) => matches(q, p.name, p.projectNumber, p.location, p.customer, p.crew, JOB_KIND_LABELS[cleanJobKind(p.jobKind)]));
     const c = completed.filter((p) => matches(q, p.name, p.projectNumber, p.location, p.customer));
     return { active: a, upcoming: u, onHold: h, completed: c.slice(0, MAX_COMPLETED_SHOWN), completedTotal: c.length };
   }, [q, searching, active, upcoming, onHold, completed]);
@@ -102,7 +108,7 @@ export default function BoardView({
             </button>
           )}
         </div>
-        {!readOnly && <ProjectFormModal crewList={foremen} />}
+        {!readOnly && <ProjectFormModal crewList={foremen} parentOptions={parentOptions} />}
       </div>
 
       {searching && (
@@ -119,20 +125,21 @@ export default function BoardView({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
             {shown.active.map((p) => (
               <div key={p.id} style={{ position: "relative" }}>
-                <Link href={`/projects/${p.id}`} style={cardStyle}>
+                <Link href={`/projects/${p.id}`} style={{ ...cardStyle, ...tapBorder(p) }}>
                   <h3 style={{ fontSize: "1rem", paddingRight: 24 }}>
                     {p.projectNumber && <span style={{ color: "var(--muted)", fontFamily: "var(--font-mono)" }}>{p.projectNumber} · </span>}
                     {p.name}
                   </h3>
+                  <KindTag p={p} />
                   <div style={{ color: "var(--muted)", fontSize: "0.85rem" }}>{p.location}</div>
                   <div style={{ marginTop: 8, fontSize: "0.85rem" }}>Completion: {p.endDate || "—"}</div>
                   {!readOnly && <div style={{ fontSize: "0.85rem" }}>Value: {p.value ? `$${Number(p.value).toLocaleString()}` : "—"}</div>}
                   <div style={{ fontSize: "0.85rem" }}>Crew: {(p.crew || []).join(", ") || "Unassigned"}</div>
-                  {!p.projectNumber && <NoNumberChip />}
+                  {!p.projectNumber && p.jobKind !== "fwi_hot_tap" && <NoNumberChip />}
                 </Link>
                 {!readOnly && (
                   <div style={{ position: "absolute", top: 14, right: 14 }}>
-                    <ProjectFormModal project={p} crewList={foremen} />
+                    <ProjectFormModal project={p} crewList={foremen} parentOptions={parentOptions} />
                   </div>
                 )}
               </div>
@@ -150,19 +157,20 @@ export default function BoardView({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
             {shown.upcoming.map((p) => (
               <div key={p.id} style={{ position: "relative" }}>
-                <Link href={`/projects/${p.id}`} style={cardStyle}>
+                <Link href={`/projects/${p.id}`} style={{ ...cardStyle, ...tapBorder(p) }}>
                   <h3 style={{ fontSize: "1rem", paddingRight: 24 }}>
                     {p.projectNumber && <span style={{ color: "var(--muted)", fontFamily: "var(--font-mono)" }}>{p.projectNumber} · </span>}
                     {p.name}
                   </h3>
+                  <KindTag p={p} />
                   <div style={{ color: "var(--muted)", fontSize: "0.85rem" }}>{p.location}</div>
                   <div style={{ marginTop: 8, fontSize: "0.85rem" }}>Start: {p.startDate || "TBD"}</div>
-                  {!p.projectNumber && <NoNumberChip />}
+                  {!p.projectNumber && p.jobKind !== "fwi_hot_tap" && <NoNumberChip />}
                   {!readOnly && <div style={{ fontSize: "0.85rem" }}>Value: {p.value ? `$${Number(p.value).toLocaleString()}` : "—"}</div>}
                 </Link>
                 {!readOnly && (
                   <div style={{ position: "absolute", top: 14, right: 14 }}>
-                    <ProjectFormModal project={p} crewList={foremen} />
+                    <ProjectFormModal project={p} crewList={foremen} parentOptions={parentOptions} />
                   </div>
                 )}
               </div>
@@ -184,13 +192,14 @@ export default function BoardView({
                     {p.projectNumber && <span style={{ color: "var(--muted)", fontFamily: "var(--font-mono)" }}>{p.projectNumber} · </span>}
                     {p.name}
                   </h3>
+                  <KindTag p={p} />
                   <div style={{ color: "var(--muted)", fontSize: "0.85rem" }}>{p.location}</div>
                   <div style={{ marginTop: 8, fontSize: "0.85rem" }}>Completion: {p.endDate || "—"}</div>
                   {!readOnly && <div style={{ fontSize: "0.85rem" }}>Value: {p.value ? `$${Number(p.value).toLocaleString()}` : "—"}</div>}
                 </Link>
                 {!readOnly && (
                   <div style={{ position: "absolute", top: 14, right: 14 }}>
-                    <ProjectFormModal project={p} crewList={foremen} />
+                    <ProjectFormModal project={p} crewList={foremen} parentOptions={parentOptions} />
                   </div>
                 )}
               </div>
@@ -237,6 +246,27 @@ export default function BoardView({
         </section>
       )}
     </>
+  );
+}
+
+// Tap jobs get their own color on the card edge, matching the calendar; FWI hot taps say which job they are billed through.
+function tapBorder(p: BoardProject): React.CSSProperties {
+  const color = JOB_KIND_COLORS[cleanJobKind(p.jobKind)];
+  return color ? { borderLeft: `4px solid ${color}` } : {};
+}
+
+function KindTag({ p }: { p: BoardProject }) {
+  const kind = cleanJobKind(p.jobKind);
+  if (kind === "standard") return null;
+  return (
+    <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+      <span style={{ background: JOB_KIND_COLORS[kind]!, color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase" }}>{JOB_KIND_LABELS[kind]}</span>
+      {kind === "fwi_hot_tap" && (
+        <span style={{ fontSize: "0.78rem", color: p.billedThroughName ? "var(--muted)" : "var(--danger)" }}>
+          {p.billedThroughName ? `Billed through ${p.billedThroughName}` : "Pick the job it's billed through (pencil)"}
+        </span>
+      )}
+    </div>
   );
 }
 

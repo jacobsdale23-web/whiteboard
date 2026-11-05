@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
+import { JOB_KIND_COLORS, JOB_KIND_LABELS, cleanJobKind } from "@/lib/job-kinds";
 import { db } from "@/lib/db";
 import { projects, milestones, dailyLogs, lineItems, expenses, invoices, payApps, sovItems, sovEntries, billingRates, billingTasks, tmInvoices, jsaForms, leakNumbers, receipts, omReports, projectQuotes } from "@/lib/db/schema";
 import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
@@ -52,6 +53,14 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const readOnly = !!current && isSafetyViewer(current.profile);
   const people = await getPeople(project.companyId);
   const isTm = project.billingType === "tm";
+
+  // Tap division: an FWI hot tap is never billed on its own, it goes on the invoice of the job it was done for.
+  const jobKind = cleanJobKind(project.jobKind);
+  const isFwiTap = jobKind === "fwi_hot_tap";
+  const [billedThroughJob, tapsBilledHere] = await Promise.all([
+    isFwiTap && project.billedThroughProjectId ? db.query.projects.findFirst({ where: eq(projects.id, project.billedThroughProjectId) }) : Promise.resolve(undefined),
+    isAdmin ? db.select().from(projects).where(eq(projects.billedThroughProjectId, id)) : Promise.resolve([] as (typeof projects.$inferSelect)[]),
+  ]);
 
   // O&M crews fill out a field report per job (the sections depend on the kind of job).
   const isOm = project.companyId === "om";
@@ -155,11 +164,17 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             >
               {project.status.replace("_", " ")}
             </span>
+            {JOB_KIND_COLORS[jobKind] && (
+              <span style={{ marginLeft: 8, background: JOB_KIND_COLORS[jobKind]!, color: "#fff", borderRadius: 20, padding: "3px 10px", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase" }}>
+                {JOB_KIND_LABELS[jobKind]}
+              </span>
+            )}
             {project.projectNumber ? (
               <span style={{ marginLeft: 8, color: "var(--muted)", fontFamily: "var(--font-mono)", fontSize: "0.82rem", fontWeight: 600 }}>
                 #{project.projectNumber}
               </span>
             ) : (
+              !isFwiTap &&
               (project.status === "active" || project.status === "upcoming") && (
                 <span style={{ marginLeft: 8, background: "#ffe699", color: "#5c4400", borderRadius: 20, padding: "3px 10px", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase" }}>
                   No QuickBooks #
@@ -180,12 +195,51 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         </div>
       </div>
 
-      {isAdmin && !readOnly && budgetData && (
+      {isFwiTap && (
+        <div style={{ background: "var(--surface)", border: `1px solid ${JOB_KIND_COLORS.fwi_hot_tap}`, borderRadius: 12, padding: "14px 18px", marginBottom: 20, fontSize: "0.88rem" }}>
+          <div style={{ fontWeight: 700, marginBottom: 2 }}>Not billed on its own</div>
+          {billedThroughJob ? (
+            <div style={{ color: "var(--ink-soft)" }}>
+              This tap is billed through{" "}
+              <Link href={`/projects/${billedThroughJob.id}`} style={{ color: "inherit", fontWeight: 600, textDecoration: "underline" }}>
+                {billedThroughJob.projectNumber ? `${billedThroughJob.projectNumber} · ` : ""}
+                {billedThroughJob.name}
+              </Link>
+              . Put it on that job&apos;s invoice.
+            </div>
+          ) : (
+            <div style={{ color: "var(--danger)" }}>It isn&apos;t linked to a job yet. Edit it on the Board and pick the job it is billed through.</div>
+          )}
+        </div>
+      )}
+
+      {isAdmin && !readOnly && tapsBilledHere.length > 0 && (
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${JOB_KIND_COLORS.fwi_hot_tap}`, borderRadius: 12, padding: "14px 18px", marginBottom: 20, fontSize: "0.88rem" }}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>FWI hot taps billed through this job</div>
+          <div style={{ color: "var(--muted)", fontSize: "0.8rem", marginBottom: 8 }}>The tap crew does these, but they go on this job&apos;s invoice, not their own.</div>
+          {tapsBilledHere
+            .slice()
+            .sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""))
+            .map((t) => (
+              <div key={t.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "4px 0", borderTop: "1px solid var(--border)" }}>
+                <Link href={`/projects/${t.id}`} style={{ color: "inherit", textDecoration: "underline" }}>
+                  {t.name}
+                </Link>
+                <span style={{ color: "var(--muted)", fontSize: "0.8rem", textTransform: "capitalize", whiteSpace: "nowrap" }}>
+                  {t.status.replace("_", " ")}
+                  {t.startDate ? ` · ${t.startDate}` : ""}
+                </span>
+              </div>
+            ))}
+        </div>
+      )}
+
+      {isAdmin && !readOnly && budgetData && !isFwiTap && (
         <QuickBooksCard companyId={project.companyId} projectNumber={project.projectNumber} projectName={project.name} wb={whiteboardFigures(budgetData)} quoteInvoiceNos={projectQuoteRows.map((q) => q.billedInvoiceNo).filter((n): n is string => !!n)} />
       )}
 
       {/* Small jobs billed from a quote. Jobs with a schedule of values or pay apps are billed another way, so the card only shows there once a quote is attached. */}
-      {isAdmin && !readOnly && budgetData && !isTm && (projectQuoteRows.length > 0 || (!budgetData.payApps.length && !budgetData.sovItems.length)) && (
+      {isAdmin && !readOnly && budgetData && !isTm && !isFwiTap && (projectQuoteRows.length > 0 || (!budgetData.payApps.length && !budgetData.sovItems.length)) && (
         <QuoteCard
           projectId={id}
           customer={project.customer}

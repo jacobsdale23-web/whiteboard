@@ -106,6 +106,10 @@ export const projects = pgTable("projects", {
   // automatically when a project becomes active; null before then.
   projectNumber: text("project_number"),
   customer: text("customer"),
+  // "standard" | "hot_tap" | "fwi_hot_tap" (lib/job-kinds.ts). Taps get their own colors on the timeline and calendar.
+  jobKind: text("job_kind").notNull().default("standard"),
+  // For an FWI hot tap: the job it is billed through. A tap done for one of our own jobs is never billed by itself.
+  billedThroughProjectId: text("billed_through_project_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -392,7 +396,7 @@ export const opportunities = pgTable("opportunities", {
   id: text("id").primaryKey(),
   companyId: text("company_id").notNull(),
   kind: text("kind").notNull().default("Opportunity"), // "Opportunity" | "Meeting"
-  oppType: text("opp_type").notNull().default("Bid Job"), // Bid Job | Meeting | Hot Tap | O&M | T&M (Atmos)
+  oppType: text("opp_type").notNull().default("Bid Job"), // Bid Job | Meeting | Hot Tap | FWI Hot Tap | O&M | T&M (Atmos)
   jobName: text("job_name").notNull(),
   estimator: text("estimator"),
   bidDueDate: text("bid_due_date"),

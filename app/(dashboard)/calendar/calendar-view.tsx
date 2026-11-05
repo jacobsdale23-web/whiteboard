@@ -2,21 +2,14 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { computeBar, addDays, type GanttProject, type Bar } from "@/lib/gantt";
+import { computeBar, addDays, barColor, tapTag, type GanttProject, type Bar } from "@/lib/gantt";
+import { oppTypeColor } from "@/lib/job-kinds";
 import GanttChart from "./gantt-chart";
 import StatusDialog from "./status-dialog";
 
 type Mode = "timeline" | "week" | "day";
 
 const DAY_MS = 86400000;
-const BAR_COLORS: Record<string, string> = {
-  "status-active": "var(--active)",
-  "status-upcoming": "var(--upcoming)",
-  "status-overdue": "var(--danger)",
-  "status-complete": "var(--muted)",
-  "status-hold": "var(--hold, #b7791f)",
-};
-
 function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
@@ -42,6 +35,7 @@ export type CalendarEvent = {
   location: string | null;
   date: string;
   kind: "Bid Due" | "Meeting";
+  oppType?: string | null; // Hot Tap and FWI Hot Tap opportunities show in their own colors
   customer: string | null;
   estimator: string | null;
 };
@@ -50,6 +44,10 @@ const EVENT_COLORS: Record<CalendarEvent["kind"], string> = {
   "Bid Due": "var(--upcoming)",
   Meeting: "var(--shop)",
 };
+
+function eventColor(e: CalendarEvent): string {
+  return oppTypeColor(e.oppType) ?? EVENT_COLORS[e.kind];
+}
 
 function eventDate(e: CalendarEvent): Date {
   return new Date(e.date + "T00:00:00");
@@ -170,7 +168,7 @@ function UpcomingEvents({ events, today }: { events: CalendarEvent[]; today: Dat
               gap: 12,
               background: "var(--surface)",
               border: "1px solid var(--border)",
-              borderLeft: `4px solid ${EVENT_COLORS[e.kind]}`,
+              borderLeft: `4px solid ${eventColor(e)}`,
               borderRadius: 8,
               padding: "8px 12px",
               fontSize: "0.85rem",
@@ -180,6 +178,7 @@ function UpcomingEvents({ events, today }: { events: CalendarEvent[]; today: Dat
               {fmt(eventDate(e), { weekday: "short", month: "short", day: "numeric" })}
             </span>
             <DayTag>{e.kind}</DayTag>
+            {oppTypeColor(e.oppType) && <DayTag>{e.oppType}</DayTag>}
             <Link href={`/opportunities/${e.id}`} style={{ color: "inherit", fontWeight: 600 }}>
               {e.name}
             </Link>
@@ -246,7 +245,7 @@ function WeekView({ items, events, weekStart, today, onSelect }: { items: Item[]
                   href={`/opportunities/${e.id}`}
                   title={`${e.kind}: ${e.name}`}
                   style={{
-                    background: EVENT_COLORS[e.kind],
+                    background: eventColor(e),
                     color: "#fff",
                     borderRadius: 5,
                     padding: "4px 6px",
@@ -256,7 +255,7 @@ function WeekView({ items, events, weekStart, today, onSelect }: { items: Item[]
                     overflow: "hidden",
                   }}
                 >
-                  <div style={{ opacity: 0.85, textTransform: "uppercase", fontSize: "0.62rem" }}>{e.kind}</div>
+                  <div style={{ opacity: 0.85, textTransform: "uppercase", fontSize: "0.62rem" }}>{oppTypeColor(e.oppType) ? `${e.oppType} · ${e.kind}` : e.kind}</div>
                   {e.name}
                 </Link>
               ))}
@@ -277,6 +276,7 @@ function WeekView({ items, events, weekStart, today, onSelect }: { items: Item[]
               <Link href={`/projects/${project.id}`} style={{ color: "inherit", fontWeight: 600, fontSize: "0.85rem" }}>
                 {project.name}
               </Link>
+              {tapTag(project.jobKind) && <div style={{ fontSize: "0.66rem", fontWeight: 700, textTransform: "uppercase", color: barColor("status-active", project.jobKind) }}>{tapTag(project.jobKind)}</div>}
               {project.location && <div style={{ fontSize: "0.72rem", color: "var(--muted)" }}>{project.location}</div>}
               {!!project.crew?.length && <div style={{ fontSize: "0.72rem", color: "var(--ink-soft)" }}>{project.crew.join(", ")}</div>}
             </div>
@@ -302,7 +302,7 @@ function WeekView({ items, events, weekStart, today, onSelect }: { items: Item[]
                 margin: "0 3px",
                 height: 28,
                 borderRadius: 6,
-                background: BAR_COLORS[bar.cls],
+                background: barColor(bar.cls, project.jobKind),
                 color: "#fff",
                 display: "flex",
                 alignItems: "center",
@@ -314,6 +314,7 @@ function WeekView({ items, events, weekStart, today, onSelect }: { items: Item[]
                 zIndex: 1,
               }}
             >
+              {tapTag(project.jobKind) && <span style={{ opacity: 0.85, fontSize: "0.6rem", textTransform: "uppercase", marginRight: 6 }}>{tapTag(project.jobKind)}</span>}
               {project.name}
             </div>
           </div>
@@ -341,7 +342,7 @@ function DayView({ items, events, day, onSelect }: { items: Item[]; events: Cale
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderLeft: `4px solid ${EVENT_COLORS[e.kind]}`,
+            borderLeft: `4px solid ${eventColor(e)}`,
             borderRadius: 10,
             padding: 16,
             display: "flex",
@@ -355,6 +356,7 @@ function DayView({ items, events, day, onSelect }: { items: Item[]; events: Cale
           {e.location && <div style={{ color: "var(--muted)", fontSize: "0.8rem" }}>{e.location}</div>}
           <div>
             <DayTag>{e.kind === "Bid Due" ? "Bid due today" : "Meeting"}</DayTag>
+            {oppTypeColor(e.oppType) && <DayTag>{e.oppType}</DayTag>}
           </div>
           {e.customer && <Row label="Customer" value={e.customer} />}
           {e.estimator && <Row label="Estimator" value={e.estimator} />}
@@ -371,7 +373,7 @@ function DayView({ items, events, day, onSelect }: { items: Item[]; events: Cale
             style={{
               background: "var(--surface)",
               border: "1px solid var(--border)",
-              borderLeft: `4px solid ${BAR_COLORS[bar.cls]}`,
+              borderLeft: `4px solid ${barColor(bar.cls, project.jobKind)}`,
               borderRadius: 10,
               padding: 16,
               display: "flex",
@@ -384,6 +386,7 @@ function DayView({ items, events, day, onSelect }: { items: Item[]; events: Cale
             </Link>
             {project.location && <div style={{ color: "var(--muted)", fontSize: "0.8rem" }}>{project.location}</div>}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+              {tapTag(project.jobKind) && <DayTag>{tapTag(project.jobKind)}</DayTag>}
               {starts && <DayTag>Starts today</DayTag>}
               {ends && <DayTag>Finishes today</DayTag>}
               {bar.cls === "status-overdue" && <DayTag>Overdue</DayTag>}

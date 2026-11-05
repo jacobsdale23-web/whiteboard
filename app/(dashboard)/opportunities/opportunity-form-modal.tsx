@@ -4,7 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { saveOpportunity, type OpportunityFormState } from "./actions";
 
 const KINDS = ["Opportunity", "Meeting"];
-const OPP_TYPES = ["Bid Job", "Meeting", "Hot Tap", "O&M", "T&M (Atmos)"];
+const OPP_TYPES = ["Bid Job", "Meeting", "Hot Tap", "FWI Hot Tap", "O&M", "T&M (Atmos)"];
 const ESTIMATORS = ["Jacob", "Chris", "Daryl", "Cavin", "Ross", "Paul"];
 
 type OpportunityRow = {

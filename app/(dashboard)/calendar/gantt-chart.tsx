@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { computeBar, addDays, startOfMonth, type GanttProject, type Bar } from "@/lib/gantt";
+import { computeBar, addDays, startOfMonth, barColor, tapTag, type GanttProject, type Bar } from "@/lib/gantt";
+import { JOB_KIND_COLORS, JOB_KIND_LABELS } from "@/lib/job-kinds";
 
 const DAY_MS = 86400000;
 const DAY_WIDTH = 7;
@@ -83,14 +84,6 @@ function buildLayout(projects: GanttProject[]): Layout {
   return { rows, months, totalWidth, totalHeight, todayX: xOf(today) };
 }
 
-const BAR_COLORS: Record<string, string> = {
-  "status-active": "var(--active)",
-  "status-upcoming": "var(--upcoming)",
-  "status-overdue": "var(--danger)",
-  "status-complete": "var(--muted)",
-  "status-hold": "var(--hold, #b7791f)",
-};
-
 export default function GanttChart({ projects, onSelect }: { projects: GanttProject[]; onSelect: (id: string) => void }) {
   const layout = useMemo(() => buildLayout(projects), [projects]);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; project: GanttProject } | null>(null);
@@ -107,12 +100,14 @@ export default function GanttChart({ projects, onSelect }: { projects: GanttProj
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 16, marginBottom: 14, fontSize: "0.8rem", color: "var(--ink-soft)" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", marginBottom: 14, fontSize: "0.8rem", color: "var(--ink-soft)" }}>
         <Legend color="var(--active)" label="Active" />
         <Legend color="var(--upcoming)" label="Upcoming" />
         <Legend color="var(--danger)" label="Overdue" />
         <Legend color="var(--hold, #b7791f)" label="On hold" />
         <Legend color="var(--muted)" label="Completed, not yet billed" />
+        <Legend color={JOB_KIND_COLORS.hot_tap!} label={`${JOB_KIND_LABELS.hot_tap} (active or upcoming)`} />
+        <Legend color={JOB_KIND_COLORS.fwi_hot_tap!} label={`${JOB_KIND_LABELS.fwi_hot_tap} (active or upcoming)`} />
       </div>
       <div
         style={{
@@ -158,6 +153,7 @@ export default function GanttChart({ projects, onSelect }: { projects: GanttProj
                 }}
               >
                 <div style={{ fontSize: "0.85rem", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {tapTag(r.project.jobKind) && <TapChip jobKind={r.project.jobKind} />}
                   {r.project.name}
                 </div>
                 {r.project.location && <div style={{ fontSize: "0.72rem", color: "var(--muted)" }}>{r.project.location}</div>}
@@ -209,7 +205,7 @@ export default function GanttChart({ projects, onSelect }: { projects: GanttProj
                         width: r.width,
                         height: 28,
                         borderRadius: 6,
-                        background: BAR_COLORS[r.cls],
+                        background: barColor(r.cls, r.project.jobKind),
                         color: "#fff",
                         display: "flex",
                         alignItems: "center",
@@ -224,6 +220,7 @@ export default function GanttChart({ projects, onSelect }: { projects: GanttProj
                           : undefined,
                       }}
                     >
+                      {tapTag(r.project.jobKind) && <span style={{ opacity: 0.85, fontSize: "0.62rem", textTransform: "uppercase", marginRight: 6 }}>{tapTag(r.project.jobKind)}</span>}
                       {r.project.name}
                     </div>
                   </div>
@@ -288,6 +285,15 @@ export default function GanttChart({ projects, onSelect }: { projects: GanttProj
         </div>
       )}
     </div>
+  );
+}
+
+// Small colored tag in front of a tap job's name, so the kind shows even when the bar has a status color.
+function TapChip({ jobKind }: { jobKind?: string | null }) {
+  const label = tapTag(jobKind);
+  const color = label === JOB_KIND_LABELS.fwi_hot_tap ? JOB_KIND_COLORS.fwi_hot_tap : JOB_KIND_COLORS.hot_tap;
+  return (
+    <span style={{ background: color!, color: "#fff", borderRadius: 4, padding: "1px 5px", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", marginRight: 6 }}>{label}</span>
   );
 }
 

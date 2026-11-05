@@ -1,3 +1,5 @@
+import { JOB_KIND_COLORS, JOB_KIND_LABELS, cleanJobKind } from "@/lib/job-kinds";
+
 export type GanttProject = {
   id: string;
   name: string;
@@ -8,9 +10,31 @@ export type GanttProject = {
   duration: string | null;
   value: string | number | null;
   crew: string[] | null;
+  jobKind?: string | null; // standard | hot_tap | fwi_hot_tap
 };
 
 export type Bar = { start: Date; end: Date; cls: string; estimated: boolean };
+
+const STATUS_COLORS: Record<string, string> = {
+  "status-active": "var(--active)",
+  "status-upcoming": "var(--upcoming)",
+  "status-overdue": "var(--danger)",
+  "status-complete": "var(--muted)",
+  "status-hold": "var(--hold, #b7791f)",
+};
+
+// A tap job shows in its own color while it is active or upcoming. Overdue, on hold and finished jobs keep their status
+// color so those warnings are never hidden; the bar's tag (tapTag) still says what kind of job it is.
+export function barColor(cls: string, jobKind?: string | null): string {
+  const own = JOB_KIND_COLORS[cleanJobKind(jobKind)];
+  if (own && (cls === "status-active" || cls === "status-upcoming")) return own;
+  return STATUS_COLORS[cls];
+}
+
+export function tapTag(jobKind?: string | null): string | null {
+  const kind = cleanJobKind(jobKind);
+  return kind === "standard" ? null : JOB_KIND_LABELS[kind];
+}
 
 function parseDate(s: string | null): Date | null {
   if (!s) return null;

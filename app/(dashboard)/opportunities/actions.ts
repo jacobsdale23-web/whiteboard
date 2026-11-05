@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { opportunities, projects } from "@/lib/db/schema";
 import { getSessionAndProfile, isSafetyViewer, assertNotSafety } from "@/lib/auth/current-user";
 import { assertCompanyAccess, canAccessCompany, requireCompany } from "@/lib/auth/company";
+import { jobKindFromOppType } from "@/lib/job-kinds";
 
 export type OpportunityFormState = { error?: string } | null;
 
@@ -85,6 +86,8 @@ export async function updateBidStatus(
         value: bidValue as never,
         crew: [],
         billingType: existing.oppType === "T&M (Atmos)" ? "tm" : "lump_sum",
+        // A won Hot Tap / FWI Hot Tap starts as that kind of job (an FWI hot tap is then pointed at the job it is billed through).
+        jobKind: jobKindFromOppType(existing.oppType),
       })
       .returning();
     await db.update(opportunities).set({ convertedProjectId: project.id }).where(eq(opportunities.id, id));

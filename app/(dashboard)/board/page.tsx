@@ -12,20 +12,35 @@ export default async function BoardPage() {
   const allProjects = await db.select().from(projects).where(eq(projects.companyId, company.id));
   const allCrew = await db.select().from(crew).where(eq(crew.companyId, company.id));
 
-  const toBoard = (p: (typeof allProjects)[number]) => ({
-    id: p.id,
-    name: p.name,
-    location: p.location,
-    status: p.status,
-    startDate: p.startDate,
-    endDate: p.endDate,
-    duration: p.duration,
-    value: readOnly ? null : p.value,
-    crew: p.crew,
-    billingType: p.billingType,
-    projectNumber: p.projectNumber,
-    customer: p.customer,
-  });
+  const byId = new Map(allProjects.map((p) => [p.id, p]));
+  const labelOf = (p: (typeof allProjects)[number]) => (p.projectNumber ? `${p.projectNumber} · ${p.name}` : p.name);
+
+  const toBoard = (p: (typeof allProjects)[number]) => {
+    const parent = p.billedThroughProjectId ? byId.get(p.billedThroughProjectId) : undefined;
+    return {
+      id: p.id,
+      name: p.name,
+      location: p.location,
+      status: p.status,
+      startDate: p.startDate,
+      endDate: p.endDate,
+      duration: p.duration,
+      value: readOnly ? null : p.value,
+      crew: p.crew,
+      billingType: p.billingType,
+      projectNumber: p.projectNumber,
+      customer: p.customer,
+      jobKind: p.jobKind,
+      billedThroughProjectId: p.billedThroughProjectId,
+      billedThroughName: parent ? labelOf(parent) : null,
+    };
+  };
+
+  // Jobs an FWI hot tap can be billed through: any of our own jobs that are still open (not another FWI hot tap).
+  const parentOptions = allProjects
+    .filter((p) => p.jobKind !== "fwi_hot_tap" && ["active", "upcoming", "on_hold", "complete"].includes(p.status))
+    .sort((a, b) => labelOf(a).localeCompare(labelOf(b), undefined, { numeric: true }))
+    .map((p) => ({ id: p.id, label: labelOf(p) }));
 
   const active = allProjects.filter((p) => p.status === "active");
   const upcoming = allProjects.filter((p) => p.status === "upcoming");
@@ -48,6 +63,7 @@ export default async function BoardPage() {
       completed={completed}
       foremen={foremen.map((c) => ({ id: c.id, name: c.name }))}
       atShop={atShop.map((c) => ({ id: c.id, name: c.name }))}
+      parentOptions={parentOptions}
       readOnly={readOnly}
     />
   );

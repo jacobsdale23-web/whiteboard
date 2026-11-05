@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { projects } from "@/lib/db/schema";
 import { QB_NUMBER_RE } from "@/lib/project-numbers";
+import { cleanJobKind } from "@/lib/job-kinds";
 import { assertNotSafety } from "@/lib/auth/current-user";
 import { assertCompanyAccess, requireCompany } from "@/lib/auth/company";
 
@@ -21,7 +22,15 @@ export type ProjectInput = {
   billingType: string;
   projectNumber: string | null;
   customer: string | null;
+  jobKind?: string;
+  billedThroughProjectId?: string | null;
 };
+
+// An FWI hot tap is never billed by itself, so when it is finished there is nothing left to bill: it closes out
+// (billed through its parent job) instead of sitting grey on the calendar waiting for a bill that never comes.
+function closeOutStatus(kind: string, status: string) {
+  return kind === "fwi_hot_tap" && status === "complete" ? "billed" : status;
+}
 
 export async function saveProject(id: string | null, data: ProjectInput) {
   await assertNotSafety();
@@ -39,18 +48,31 @@ export async function saveProject(id: string | null, data: ProjectInput) {
     throw new Error("Use the project number exactly as it appears in QuickBooks (for example 26108).");
   }
 
+  // Tap division jobs: an FWI hot tap is billed through the job it was done for, so it must point at one of this
+  // company's own other jobs (never itself, never another FWI hot tap).
+  const jobKind = cleanJobKind(data.jobKind ?? existing?.jobKind);
+  let billedThroughProjectId: string | null = null;
+  if (jobKind === "fwi_hot_tap" && data.billedThroughProjectId) {
+    const parent = await db.query.projects.findFirst({ where: eq(projects.id, data.billedThroughProjectId) });
+    if (!parent || parent.companyId !== companyId || parent.id === id) throw new Error("Pick the job this tap is billed through from the list.");
+    if (parent.jobKind === "fwi_hot_tap") throw new Error("An FWI hot tap can't be billed through another FWI hot tap. Pick the job it is really billed on.");
+    billedThroughProjectId = parent.id;
+  }
+
   const values = {
     name: data.name.trim(),
     location: data.location,
-    status: data.status,
+    status: closeOutStatus(jobKind, data.status),
     startDate: data.startDate,
     endDate: data.endDate,
     duration: data.duration,
     value: data.value as never,
     crew: data.crew,
-    billingType: data.billingType,
+    billingType: jobKind === "fwi_hot_tap" ? "lump_sum" : data.billingType,
     projectNumber,
     customer: data.customer?.trim() || null,
+    jobKind,
+    billedThroughProjectId,
   };
 
   if (id) {
@@ -77,7 +99,7 @@ export async function setProjectStatus(id: string, status: string) {
   if (!existing) throw new Error("Project not found.");
   await assertCompanyAccess(existing.companyId);
 
-  const changes: Partial<typeof projects.$inferInsert> = { status };
+  const changes: Partial<typeof projects.$inferInsert> = { status: closeOutStatus(existing.jobKind, status) };
   if (status === "complete" && !existing.endDate) {
     changes.endDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
   }
@@ -110,6 +132,8 @@ export async function deleteProject(id: string) {
   if (!existing) return;
   await assertCompanyAccess(existing.companyId);
   await db.delete(projects).where(eq(projects.id, id));
+  // Any FWI hot taps that were billed through this job are left without one, to be pointed at another job.
+  await db.update(projects).set({ billedThroughProjectId: null }).where(eq(projects.billedThroughProjectId, id));
   revalidatePath("/board");
   revalidatePath("/calendar");
 }
