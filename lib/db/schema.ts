@@ -110,6 +110,8 @@ export const projects = pgTable("projects", {
   jobKind: text("job_kind").notNull().default("standard"),
   // For an FWI hot tap: the job it is billed through. A tap done for one of our own jobs is never billed by itself.
   billedThroughProjectId: text("billed_through_project_id"),
+  // The office's notes for the crew (phone numbers, info about the job). Shown at the top of the project page to everyone.
+  notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -22,6 +22,7 @@ type BoardProject = {
   jobKind: string;
   billedThroughProjectId: string | null;
   billedThroughName: string | null; // the job an FWI hot tap is billed through
+  notes: string | null;
 };
 type CompletedProject = { id: string; name: string; projectNumber: string | null; location: string | null; customer: string | null; endDate: string | null };
 type CrewMember = { id: string; name: string };
@@ -49,6 +50,7 @@ export default function BoardView({
   foremen,
   atShop,
   parentOptions,
+  showNotes = false,
   readOnly = false,
 }: {
   active: BoardProject[];
@@ -58,6 +60,7 @@ export default function BoardView({
   foremen: CrewMember[];
   atShop: CrewMember[];
   parentOptions: ParentOption[];
+  showNotes?: boolean;
   readOnly?: boolean;
 }) {
   const router = useRouter();
@@ -108,7 +111,7 @@ export default function BoardView({
             </button>
           )}
         </div>
-        {!readOnly && <ProjectFormModal crewList={foremen} parentOptions={parentOptions} />}
+        {!readOnly && <ProjectFormModal crewList={foremen} parentOptions={parentOptions} showNotes={showNotes} />}
       </div>
 
       {searching && (
@@ -139,7 +142,7 @@ export default function BoardView({
                 </Link>
                 {!readOnly && (
                   <div style={{ position: "absolute", top: 14, right: 14 }}>
-                    <ProjectFormModal project={p} crewList={foremen} parentOptions={parentOptions} />
+                    <ProjectFormModal project={p} crewList={foremen} parentOptions={parentOptions} showNotes={showNotes} />
                   </div>
                 )}
               </div>
@@ -170,7 +173,7 @@ export default function BoardView({
                 </Link>
                 {!readOnly && (
                   <div style={{ position: "absolute", top: 14, right: 14 }}>
-                    <ProjectFormModal project={p} crewList={foremen} parentOptions={parentOptions} />
+                    <ProjectFormModal project={p} crewList={foremen} parentOptions={parentOptions} showNotes={showNotes} />
                   </div>
                 )}
               </div>
@@ -199,7 +202,7 @@ export default function BoardView({
                 </Link>
                 {!readOnly && (
                   <div style={{ position: "absolute", top: 14, right: 14 }}>
-                    <ProjectFormModal project={p} crewList={foremen} parentOptions={parentOptions} />
+                    <ProjectFormModal project={p} crewList={foremen} parentOptions={parentOptions} showNotes={showNotes} />
                   </div>
                 )}
               </div>

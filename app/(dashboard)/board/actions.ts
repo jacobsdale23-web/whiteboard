@@ -24,7 +24,11 @@ export type ProjectInput = {
   customer: string | null;
   jobKind?: string;
   billedThroughProjectId?: string | null;
+  // Left out (undefined) by forms that don't show the notes box, so saving them never wipes the notes.
+  notes?: string | null;
 };
+
+const MAX_NOTES = 4000;
 
 // An FWI hot tap is never billed by itself, so when it is finished there is nothing left to bill: it closes out
 // (billed through its parent job) instead of sitting grey on the calendar waiting for a bill that never comes.
@@ -73,6 +77,7 @@ export async function saveProject(id: string | null, data: ProjectInput) {
     customer: data.customer?.trim() || null,
     jobKind,
     billedThroughProjectId,
+    ...(data.notes !== undefined ? { notes: data.notes?.trim().slice(0, MAX_NOTES) || null } : {}),
   };
 
   if (id) {

@@ -33,6 +33,7 @@ export default async function BoardPage() {
       jobKind: p.jobKind,
       billedThroughProjectId: p.billedThroughProjectId,
       billedThroughName: parent ? labelOf(parent) : null,
+      notes: p.notes,
     };
   };
 
@@ -64,6 +65,7 @@ export default async function BoardPage() {
       foremen={foremen.map((c) => ({ id: c.id, name: c.name }))}
       atShop={atShop.map((c) => ({ id: c.id, name: c.name }))}
       parentOptions={parentOptions}
+      showNotes={company.id === "om"}
       readOnly={readOnly}
     />
   );

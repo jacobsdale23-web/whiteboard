@@ -21,6 +21,7 @@ type ProjectRow = {
   customer: string | null;
   jobKind?: string;
   billedThroughProjectId?: string | null;
+  notes?: string | null;
 };
 type CrewMember = { id: string; name: string };
 
@@ -37,7 +38,7 @@ const BILLING_TYPES = [
   { value: "tm", label: "T&M" },
 ];
 
-export default function ProjectFormModal({ project, crewList, parentOptions = [] }: { project?: ProjectRow; crewList: CrewMember[]; parentOptions?: ParentOption[] }) {
+export default function ProjectFormModal({ project, crewList, parentOptions = [], showNotes = false }: { project?: ProjectRow; crewList: CrewMember[]; parentOptions?: ParentOption[]; showNotes?: boolean }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -65,6 +66,8 @@ export default function ProjectFormModal({ project, crewList, parentOptions = []
       customer: String(formData.get("customer") || "").trim() || null,
       jobKind,
       billedThroughProjectId: isFwiTap ? String(formData.get("billedThroughProjectId") || "") || null : null,
+      // Only sent when the box is on the form, so a form without it never clears the notes.
+      ...(showNotes ? { notes: String(formData.get("notes") || "") } : {}),
     };
     try {
       await saveProject(project?.id ?? null, data);
@@ -201,6 +204,18 @@ export default function ProjectFormModal({ project, crewList, parentOptions = []
                 <input type="number" name="value" min="0" step="1" defaultValue={project?.value || ""} style={inputStyle} />
               </Field>
             </div>
+            {showNotes && (
+              <Field label="Notes for the Crew">
+                <textarea
+                  name="notes"
+                  rows={5}
+                  maxLength={4000}
+                  defaultValue={project?.notes || ""}
+                  placeholder={"Phone numbers, who to call, gate codes, info about the job.\nThe foremen see this when they open the project."}
+                  style={{ ...inputStyle, resize: "vertical" }}
+                />
+              </Field>
+            )}
             <Field label="Crew">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px,1fr))", gap: 6, maxHeight: 130, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 6, padding: 10, background: "var(--bg)" }}>
                 {crewList.length ? (

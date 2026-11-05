@@ -195,6 +195,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         </div>
       </div>
 
+      {project.notes?.trim() && (
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: "4px solid var(--rust)", borderRadius: 12, padding: "14px 18px", marginBottom: 20 }}>
+          <div style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Notes from the office</div>
+          <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: "0.95rem", lineHeight: 1.5 }}>{project.notes}</div>
+        </div>
+      )}
+
       {isFwiTap && (
         <div style={{ background: "var(--surface)", border: `1px solid ${JOB_KIND_COLORS.fwi_hot_tap}`, borderRadius: 12, padding: "14px 18px", marginBottom: 20, fontSize: "0.88rem" }}>
           <div style={{ fontWeight: 700, marginBottom: 2 }}>Not billed on its own</div>
