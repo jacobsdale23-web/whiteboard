@@ -21,6 +21,7 @@ export type EmployeeRow = {
   daProgram: string;
   daEnrolledDate: string | null;
   notes: string | null;
+  isnNumber: string | null;
 };
 
 type Company = { id: string; name: string };
@@ -53,6 +54,7 @@ export default function EmployeeForm({ employee, companies, defaultCompanyId }: 
         daProgram: String(fd.get("daProgram") || "pending"),
         daEnrolledDate: String(fd.get("daEnrolledDate") || ""),
         notes: String(fd.get("notes") || ""),
+        isnNumber: String(fd.get("isnNumber") || ""),
       });
       if (res.error) return setError(res.error);
       if (editing) setSaved(true);
@@ -102,6 +104,9 @@ export default function EmployeeForm({ employee, companies, defaultCompanyId }: 
         </Field>
         <Field text="Address">
           <input name="address" defaultValue={employee?.address ?? ""} style={input} />
+        </Field>
+        <Field text="ISN #">
+          <input name="isnNumber" defaultValue={employee?.isnNumber ?? ""} placeholder="e.g. ISN-07499503" style={input} />
         </Field>
         <Field text="Hire date">
           <input name="hireDate" type="date" defaultValue={employee?.hireDate ?? ""} style={input} />

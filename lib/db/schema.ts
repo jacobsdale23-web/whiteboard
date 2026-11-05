@@ -618,6 +618,8 @@ export const hrEmployees = pgTable("hr_employees", {
   daEnrolledDate: text("da_enrolled_date"),
   notes: text("notes"),
   candidateId: text("candidate_id"),
+  // ISNetworld number (e.g. ISN-07499503), shown at the right end of the HR employee list.
+  isnNumber: text("isn_number"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

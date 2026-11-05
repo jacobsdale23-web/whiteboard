@@ -160,6 +160,7 @@ export type EmployeeInput = {
   daProgram: string;
   daEnrolledDate: string;
   notes: string;
+  isnNumber?: string;
 };
 
 export async function saveEmployee(id: string | null, data: EmployeeInput): Promise<Result> {
@@ -183,6 +184,8 @@ export async function saveEmployee(id: string | null, data: EmployeeInput): Prom
     daProgram,
     daEnrolledDate: daProgram === "active" ? isoDate(data.daEnrolledDate) ?? today() : isoDate(data.daEnrolledDate),
     notes: orNull(data.notes),
+    // Left out by any form that doesn't send it, so saving never wipes an ISN number.
+    ...(data.isnNumber !== undefined ? { isnNumber: orNull(data.isnNumber) } : {}),
   };
   if (id) {
     await db.update(hrEmployees).set(values).where(eq(hrEmployees.id, id));

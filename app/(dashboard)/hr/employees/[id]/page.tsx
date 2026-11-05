@@ -64,6 +64,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
             daProgram: e.daProgram,
             daEnrolledDate: e.daEnrolledDate,
             notes: e.notes,
+            isnNumber: e.isnNumber,
           }}
           companies={ws.allCompanies.map((c) => ({ id: c.id, name: c.name }))}
           defaultCompanyId={e.companyId}

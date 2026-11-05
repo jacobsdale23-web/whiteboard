@@ -21,7 +21,7 @@ export default async function EmployeesPage({ searchParams }: { searchParams: Pr
         (!company || e.companyId === company) &&
         (status === "all" || (status === "current" ? e.status !== "terminated" : e.status === status)) &&
         (!da || e.daProgram === da) &&
-        (!needle || `${e.name} ${e.position ?? ""}`.toLowerCase().includes(needle))
+        (!needle || `${e.name} ${e.position ?? ""} ${e.isnNumber ?? ""}`.toLowerCase().includes(needle))
     )
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -31,7 +31,7 @@ export default async function EmployeesPage({ searchParams }: { searchParams: Pr
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
         <form style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <input name="q" defaultValue={q} placeholder="Search name or position" style={{ ...input, width: 200 }} />
+          <input name="q" defaultValue={q} placeholder="Search name, position or ISN" style={{ ...input, width: 220 }} />
           <select name="company" defaultValue={company} style={{ ...input, width: "auto" }}>
             <option value="">All companies</option>
             {ws.allCompanies.map((c) => (
@@ -79,6 +79,7 @@ export default async function EmployeesPage({ searchParams }: { searchParams: Pr
               <th style={th}>Testing program</th>
               <th style={th}>Latest test</th>
               <th style={th}>OQ qualifications</th>
+              <th style={{ ...th, textAlign: "right" }}>ISN #</th>
             </tr>
           </thead>
           <tbody>
@@ -122,11 +123,12 @@ export default async function EmployeesPage({ searchParams }: { searchParams: Pr
                     "—"
                   )}
                 </td>
+                <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap", fontFamily: "var(--font-mono)", fontSize: "0.84rem" }}>{e.isnNumber || <span style={{ color: "var(--muted)" }}>—</span>}</td>
               </tr>
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={6} style={{ ...td, color: "var(--muted)" }}>
+                <td colSpan={7} style={{ ...td, color: "var(--muted)" }}>
                   {roster.length ? "No employees match." : "No employees yet. Add one above, or import the names already used for daily logs."}
                 </td>
               </tr>

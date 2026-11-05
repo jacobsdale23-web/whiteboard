@@ -11,6 +11,7 @@ export type RosterRow = {
   hireDate: string | null;
   daProgram: string;
   daEnrolledDate: string | null;
+  isnNumber: string | null;
   lastTest: { testType: string; status: string; date: string } | null;
   pendingTests: number;
   oqTotal: number;
@@ -35,6 +36,7 @@ export async function loadRoster(): Promise<RosterRow[]> {
       hireDate: e.hireDate,
       daProgram: e.daProgram,
       daEnrolledDate: e.daEnrolledDate,
+      isnNumber: e.isnNumber,
       lastTest: last ? { testType: last.testType, status: last.status, date: last.resultDate || last.collectedDate || last.orderedDate || last.createdAt.toISOString().slice(0, 10) } : null,
       pendingTests: mine.filter((t) => t.status === "ordered" || t.status === "collected").length,
       oqTotal: q.length,
