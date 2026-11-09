@@ -65,10 +65,14 @@ export default function PayAppModal({
     if (result.applicationDate) setApplicationDate(result.applicationDate);
     if (result.retainagePercent !== null) setRetainagePercent(result.retainagePercent);
     if (result.rows.length) {
-      setRows(result.rows.map((r) => ({ ...r, unit: "" })));
-      setImportMsg(`Imported ${result.rows.length} line items from "${result.sheetName || ""}".`);
+      setRows(result.rows.map((r) => ({ ...r, unit: r.unit ?? "" })));
+      const what =
+        result.format === "atmos"
+          ? `Imported ${result.rows.length} line items from the Atmos Continuation Sheet. Retainage is set to 0% (Atmos doesn't hold retainage).`
+          : `Imported ${result.rows.length} line items from "${result.sheetName || ""}".`;
+      setImportMsg(result.warning ? `${what} ${result.warning}` : what);
     } else {
-      setImportMsg("Filled in the header fields, but couldn't find a line-item schedule sheet — check the rows below.");
+      setImportMsg("Couldn't find a line-item schedule in that file, so nothing was filled in. I look for the EJCDC pay app (a cover sheet plus a Progress Estimate sheet) and Atmos's Continuation Sheet. Enter the rows below by hand.");
     }
   }
 
