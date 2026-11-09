@@ -66,9 +66,10 @@ export default function PayAppModal({
     if (result.retainagePercent !== null) setRetainagePercent(result.retainagePercent);
     if (result.rows.length) {
       setRows(result.rows.map((r) => ({ ...r, unit: r.unit ?? "" })));
+      const coCount = result.rows.filter((r) => /^CO-\d+$/.test(r.itemNo)).length;
       const what =
         result.format === "atmos"
-          ? `Imported ${result.rows.length} line items from the Atmos Continuation Sheet. Retainage is set to 0% (Atmos doesn't hold retainage).`
+          ? `Imported ${result.rows.length} line items from "${result.sheetName || "the Atmos Continuation Sheet"}"${result.appNumber ? ` (pay app ${result.appNumber})` : ""}. Everything billed on earlier pay apps is counted as already billed${coCount ? `, including ${coCount} change order${coCount === 1 ? "" : "s"}` : ""}. Retainage is set to 0% (Atmos doesn't hold retainage).`
           : `Imported ${result.rows.length} line items from "${result.sheetName || ""}".`;
       setImportMsg(result.warning ? `${what} ${result.warning}` : what);
     } else {

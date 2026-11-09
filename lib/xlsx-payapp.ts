@@ -39,11 +39,8 @@ export function parsePayAppWorkbook(buf: ArrayBuffer): ParsedPayApp {
   const wb = XLSX.read(buf, { type: "array", cellDates: true });
   const ejcdc = parseEjcdc(wb);
   if (ejcdc.rows.length) return ejcdc;
-  for (const name of wb.SheetNames) {
-    const atmos = parseAtmosSheet(wb.Sheets[name], name);
-    if (atmos) return atmos;
-  }
-  return ejcdc;
+  const atmos = parseAtmosWorkbook(wb);
+  return atmos ?? ejcdc;
 }
 
 function parseEjcdc(wb: XLSX.WorkBook): ParsedPayApp {
@@ -126,7 +123,69 @@ function shortDate(iso: string | null): string {
   return `${m}/${d}/${String(y).slice(2)}`;
 }
 
-function parseAtmosSheet(sheet: XLSX.WorkSheet | undefined, sheetName: string): ParsedPayApp | null {
+type CoLine = { description: string; qty: number; unitPrice: number; unit: string };
+type AtmosSheet = { parsed: ParsedPayApp; appNo: number | null; co: CoLine[]; paymentAmount: number | null };
+
+// Atmos's workbook is often the whole book: an "Application for Payment" summary plus one "Period N." sheet per pay app
+// (24 of them, the later ones still empty). Import the current period: the summary's "Period" number if it has one,
+// else the last sheet with work on it. Everything billed on the earlier periods becomes the starting point
+// ("previously installed"), including change orders, which Atmos lists in a block of their own on the period they were billed.
+function parseAtmosWorkbook(wb: XLSX.WorkBook): ParsedPayApp | null {
+  const sheets = wb.SheetNames.map((name) => ({ name, a: parseAtmosSheet(wb.Sheets[name], name) })).filter((s): s is { name: string; a: AtmosSheet } => !!s.a);
+  if (!sheets.length) return null;
+
+  let wanted: number | null = null;
+  for (const name of wb.SheetNames) {
+    if (sheets.some((s) => s.name === name)) continue;
+    const sh = wb.Sheets[name];
+    if (!sh?.["!ref"]) continue;
+    const range = XLSX.utils.decode_range(sh["!ref"]);
+    for (let r = range.s.r; r <= Math.min(range.e.r, range.s.r + 40) && wanted === null; r++) {
+      for (let c = range.s.c; c <= Math.min(range.e.c, range.s.c + 20); c++) {
+        if (/^period$/i.test(text(sh[XLSX.utils.encode_cell({ r, c })]))) {
+          for (let cc = c + 1; cc <= c + 3; cc++) {
+            const v = sh[XLSX.utils.encode_cell({ r, c: cc })]?.v;
+            if (typeof v === "number" && v > 0) {
+              wanted = v;
+              break;
+            }
+          }
+        }
+      }
+    }
+    if (wanted !== null) break;
+  }
+
+  const worked = (s: { a: AtmosSheet }) => s.a.parsed.rows.some((x) => x.periodQty) || s.a.co.length > 0;
+  const current = (wanted !== null && sheets.find((s) => s.a.appNo === wanted)) || [...sheets].reverse().find(worked) || sheets[sheets.length - 1];
+  const rows = current.a.parsed.rows.slice();
+
+  // Change orders: those billed on earlier periods are already paid (previous); the current period's are this period's.
+  let n = 0;
+  const addCo = (co: CoLine, billedNow: boolean) => {
+    n++;
+    rows.push({
+      itemNo: `CO-${n}`,
+      description: `Change Order: ${co.description}`,
+      unit: co.unit,
+      bidQty: co.qty,
+      unitPrice: co.unitPrice,
+      baselineQty: billedNow ? 0 : co.qty,
+      periodQty: billedNow ? co.qty : 0,
+      stored: 0,
+    });
+  };
+  for (const s of sheets) if (s.a.appNo !== null && current.a.appNo !== null && s.a.appNo < current.a.appNo) s.a.co.forEach((co) => addCo(co, false));
+  current.a.co.forEach((co) => addCo(co, true));
+
+  const periodDollars = rows.reduce((s, r) => s + r.periodQty * r.unitPrice, 0);
+  const pay = current.a.paymentAmount;
+  const fmt = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const warning = pay !== null && Math.abs(periodDollars - pay) > 1 ? `The line items add up to ${fmt(periodDollars)} this period, but the sheet's Payment Amount is ${fmt(pay)}. Check before saving.` : undefined;
+  return { ...current.a.parsed, rows, warning, sheetName: current.name };
+}
+
+function parseAtmosSheet(sheet: XLSX.WorkSheet | undefined, sheetName: string): AtmosSheet | null {
   if (!sheet?.["!ref"]) return null;
   const range = XLSX.utils.decode_range(sheet["!ref"]);
   const at = (r: number, c: number) => sheet[XLSX.utils.encode_cell({ r, c })];
@@ -189,10 +248,15 @@ function parseAtmosSheet(sheet: XLSX.WorkSheet | undefined, sheetName: string): 
   }
 
   const rows: ParsedSovRow[] = [];
+  const co: CoLine[] = [];
+  let coStart = -1;
   let started = false;
   for (let r = hdr + 1; r <= range.e.r; r++) {
     const item = text(at(r, itemCol));
-    if (/change order|grand total/i.test(item) || (started && /change order|grand total/i.test(text(at(r, descCol ?? itemCol))))) break;
+    if (/change order|grand total/i.test(item) || (started && /change order|grand total/i.test(text(at(r, descCol ?? itemCol))))) {
+      coStart = r;
+      break;
+    }
     // Skip the heading rows that sit under "Unit Cost" and anything that isn't an item number.
     if (!item || /^item|^c\.?o\.? no|^amount$/i.test(item)) continue;
     started = true;
@@ -220,20 +284,40 @@ function parseAtmosSheet(sheet: XLSX.WorkSheet | undefined, sheetName: string): 
   }
   if (!rows.length) return null;
 
-  const periodDollars = rows.reduce((s, r) => s + r.periodQty * r.unitPrice, 0);
+  // The change-order block under the items: lines that were billed on this period's sheet.
+  if (coStart >= 0) {
+    for (let r = coStart; r <= range.e.r; r++) {
+      const label = `${text(at(r, itemCol))} ${descCol !== undefined ? text(at(r, descCol)) : ""}`;
+      if (/grand total/i.test(label)) break;
+      const comments = commentsCol !== undefined ? text(at(r, commentsCol)) : "";
+      const qty = xlNum(sheet, r, bidQtyCol);
+      const unitPrice = xlNum(sheet, r, unitCostCol);
+      if (!comments || /^comments$/i.test(comments) || !qty || !unitPrice) continue;
+      const uom = uomCol !== undefined ? text(at(r, uomCol)) : "";
+      co.push({ description: comments, qty, unitPrice, unit: uom && uom !== "0" ? uom : "" });
+    }
+  }
+
+  const appNo = appNumber && /^\d+$/.test(appNumber.trim()) ? Number(appNumber) : null;
+  const periodDollars = rows.reduce((s, r) => s + r.periodQty * r.unitPrice, 0) + co.reduce((s, c) => s + c.qty * c.unitPrice, 0);
   const warning =
     paymentAmount !== null && Math.abs(periodDollars - paymentAmount) > 1
       ? `The line items add up to $${periodDollars.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} this period, but the sheet's Payment Amount is $${paymentAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Check before saving.`
       : undefined;
 
   return {
-    appNumber,
-    period: from && to ? `${shortDate(from)} - ${shortDate(to)}` : null,
-    applicationDate,
-    retainagePercent: 0,
-    rows,
-    sheetName,
-    format: "atmos",
-    warning,
+    appNo,
+    co,
+    paymentAmount,
+    parsed: {
+      appNumber,
+      period: from && to ? `${shortDate(from)} - ${shortDate(to)}` : null,
+      applicationDate,
+      retainagePercent: 0,
+      rows,
+      sheetName,
+      format: "atmos",
+      warning,
+    },
   };
 }

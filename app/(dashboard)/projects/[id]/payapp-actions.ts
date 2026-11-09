@@ -57,6 +57,11 @@ export async function savePayApp(
   }
   const fromLogs = isDate(header.logFrom) && isDate(header.logTo) && header.logFrom <= header.logTo;
 
+  // The first pay application recorded here sets the "already billed" starting point (previous quantity) for every line,
+  // even lines that were set up earlier with none. After that, earlier pay applications supply the history.
+  const priorApps = await db.select({ id: payApps.id }).from(payApps).where(eq(payApps.projectId, projectId));
+  const firstApp = priorApps.length === 0;
+
   const [payApp] = await db
     .insert(payApps)
     .values({
@@ -79,7 +84,13 @@ export async function savePayApp(
     if (item) {
       await db
         .update(sovItems)
-        .set({ description: row.description, bidQty: row.bidQty as never, unitPrice: row.unitPrice as never, ...(unit ? { unit } : {}) })
+        .set({
+          description: row.description,
+          bidQty: row.bidQty as never,
+          unitPrice: row.unitPrice as never,
+          ...(unit ? { unit } : {}),
+          ...(firstApp ? { baselineQty: (Number(row.baselineQty) || 0) as never } : {}),
+        })
         .where(eq(sovItems.id, item.id));
     } else {
       const [created] = await db
