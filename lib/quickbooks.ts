@@ -2,13 +2,12 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { qbConnections } from "@/lib/db/schema";
+import { oauthEndpoints } from "@/lib/qb-oauth";
 
 // Direct connection to QuickBooks Online, so an approved White Board invoice can be created there with one click.
 // Needs an Intuit developer app (free) whose keys are set as QB_CLIENT_ID and QB_CLIENT_SECRET; QB_ENV is "production"
 // (the default) or "sandbox"; QB_REDIRECT_URI must match the app's redirect URI exactly.
 
-const AUTHORIZE_URL = "https://appcenter.intuit.com/connect/oauth2";
-const TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
 const MINOR_VERSION = "75";
 
 export const DEFAULT_REDIRECT_URI = "https://www.whiteboard.cloud/api/quickbooks/callback";
@@ -47,17 +46,19 @@ export function decryptToken(stored: string): string {
 
 // ---- OAuth ----
 
-export function authorizeUrl(state: string): string {
+const endpoints = () => oauthEndpoints(process.env.QB_ENV === "sandbox" ? "sandbox" : "production");
+
+export async function authorizeUrl(state: string): Promise<string> {
   const c = qbConfig();
   const q = new URLSearchParams({ client_id: c.clientId, scope: "com.intuit.quickbooks.accounting", redirect_uri: c.redirectUri, response_type: "code", state });
-  return `${AUTHORIZE_URL}?${q}`;
+  return `${(await endpoints()).authorize}?${q}`;
 }
 
 type TokenResponse = { access_token: string; refresh_token: string; expires_in: number; x_refresh_token_expires_in: number };
 
 async function tokenRequest(body: Record<string, string>): Promise<TokenResponse> {
   const c = qbConfig();
-  const res = await fetch(TOKEN_URL, {
+  const res = await fetch((await endpoints()).token, {
     method: "POST",
     headers: {
       Authorization: `Basic ${Buffer.from(`${c.clientId}:${c.clientSecret}`).toString("base64")}`,

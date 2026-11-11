@@ -28,5 +28,5 @@ export async function GET(req: Request) {
     path: "/api/quickbooks",
     maxAge: 600,
   });
-  return NextResponse.redirect(authorizeUrl(state));
+  return NextResponse.redirect(await authorizeUrl(state));
 }
