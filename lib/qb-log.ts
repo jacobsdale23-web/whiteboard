@@ -1,6 +1,7 @@
 // Troubleshooting trail for QuickBooks calls. Intuit returns an `intuit_tid` reference on every response; quoting it lets
 // Intuit support find the exact call. Each call writes one JSON line to the server log (Vercel keeps these): which call, the
-// result, and Intuit's reference. Never tokens, never invoice contents, never the query text.
+// result, and Intuit's reference. Never tokens and never request bodies or query text that White Board sends. Intuit's own
+// error message is kept on failures because support needs it, and it can repeat a small piece of the request.
 
 export type QbCall = { op: string; method: string; path: string; status: number; tid: string | null; fault?: string };
 
