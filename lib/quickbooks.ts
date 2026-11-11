@@ -14,13 +14,14 @@ const MINOR_VERSION = "75";
 export const DEFAULT_REDIRECT_URI = "https://www.whiteboard.cloud/api/quickbooks/callback";
 
 export function qbConfig() {
-  const clientId = process.env.QB_CLIENT_ID || "";
-  const clientSecret = process.env.QB_CLIENT_SECRET || "";
+  // Trimmed: a line break pasted into the Vercel value makes Intuit reject the app ("didn't connect").
+  const clientId = (process.env.QB_CLIENT_ID || "").trim();
+  const clientSecret = (process.env.QB_CLIENT_SECRET || "").trim();
   return {
     configured: !!clientId && !!clientSecret,
     clientId,
     clientSecret,
-    redirectUri: process.env.QB_REDIRECT_URI || DEFAULT_REDIRECT_URI,
+    redirectUri: (process.env.QB_REDIRECT_URI || "").trim() || DEFAULT_REDIRECT_URI,
     apiBase: process.env.QB_ENV === "sandbox" ? "https://sandbox-quickbooks.api.intuit.com" : "https://quickbooks.api.intuit.com",
   };
 }
