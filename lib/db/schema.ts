@@ -333,6 +333,32 @@ export const receipts = pgTable("receipts", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// A Capital One statement line a person assigned to a job by hand (no receipt). `key` is the line's stable hash from
+// lib/card-statement.ts, so the same statement uploaded again remembers it.
+export const cardLineJobs = pgTable("card_line_jobs", {
+  key: text("key").primaryKey(),
+  companyId: text("company_id").notNull(),
+  projectId: text("project_id").notNull(),
+  date: text("date"),
+  description: text("description"),
+  amount: numeric("amount"),
+  card: text("card"),
+  setBy: text("set_by").notNull(),
+  setAt: timestamp("set_at").defaultNow().notNull(),
+});
+
+// "Always use this job for this vendor": applied to statement charges that have no receipt. `pattern` is the vendor's
+// first meaningful words (lowercase); a charge matches when its description contains all of them.
+export const cardVendorRules = pgTable("card_vendor_rules", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id").notNull(),
+  pattern: text("pattern").notNull(),
+  label: text("label").notNull(),
+  projectId: text("project_id").notNull(),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const invoices = pgTable("invoices", {
   id: text("id").primaryKey(),
   projectId: text("project_id").notNull(),

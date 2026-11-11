@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { analyzeStatement, confirmStatementMatch, type StatementResult } from "./statement-actions";
+import { useMemo, useState, useTransition } from "react";
+import { analyzeStatement, assignCharge, clearChargeAssignment, confirmStatementMatch, removeVendorRule, type StatementLineOut, type StatementResult } from "./statement-actions";
 
 const money = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+const round = (n: number) => Math.round(n * 100) / 100;
 
 function csvCell(s: string | number) {
   const t = String(s);
@@ -20,12 +21,18 @@ function download(name: string, rows: (string | number)[][]) {
   URL.revokeObjectURL(url);
 }
 
+const SOURCE_LABEL = { receipt: "receipt", manual: "assigned by hand", rule: "remembered vendor" } as const;
+
 // Upload a Capital One export: it is matched to the receipts foremen scanned and totalled by job, ready to enter as split lines on the lump entry in QuickBooks.
 export default function StatementTool() {
   const [csv, setCsv] = useState("");
   const [fileName, setFileName] = useState("");
   const [result, setResult] = useState<StatementResult | null>(null);
   const [error, setError] = useState("");
+  const [card, setCard] = useState(""); // "" = all cards
+  const [assigning, setAssigning] = useState<string | null>(null);
+  const [pickJob, setPickJob] = useState("");
+  const [remember, setRemember] = useState(false);
   const [pending, startTransition] = useTransition();
 
   function analyze(text: string) {
@@ -42,16 +49,41 @@ export default function StatementTool() {
     const text = await f.text();
     setCsv(text);
     setFileName(f.name);
+    setCard("");
     analyze(text);
   }
 
-  function confirm(receiptId: string, key: string) {
+  function act(fn: () => Promise<{ error?: string }>) {
     startTransition(async () => {
-      const res = await confirmStatementMatch(receiptId, key);
+      const res = await fn();
       if (res.error) setError(res.error);
-      else analyze(csv);
+      else {
+        setAssigning(null);
+        setPickJob("");
+        setRemember(false);
+        analyze(csv);
+      }
     });
   }
+
+  const shown: StatementLineOut[] = useMemo(() => (result ? result.lines.filter((l) => !card || l.card === card) : []), [result, card]);
+  const charges = shown.filter((l) => !l.credit);
+  const split = useMemo(() => {
+    const m = new Map<string, { count: number; total: number }>();
+    for (const l of charges) {
+      if (!l.job) continue;
+      const cur = m.get(l.job) ?? { count: 0, total: 0 };
+      cur.count++;
+      cur.total += l.amount;
+      m.set(l.job, cur);
+    }
+    return [...m.entries()].map(([job, v]) => ({ job, count: v.count, total: round(v.total) })).sort((a, b) => a.job.localeCompare(b.job, undefined, { numeric: true }));
+  }, [charges]);
+  const unmatched = charges.filter((l) => !l.job);
+  const unmatchedTotal = round(unmatched.reduce((s, l) => s + l.amount, 0));
+  const creditTotal = round(shown.filter((l) => l.credit).reduce((s, l) => s + l.amount, 0));
+  const grand = round(split.reduce((s, x) => s + x.total, 0) + unmatchedTotal);
+  const bySource = (src: string) => charges.filter((l) => l.source === src).length;
 
   return (
     <section style={{ marginBottom: 28 }}>
@@ -66,9 +98,23 @@ export default function StatementTool() {
 
       {result && (
         <div style={{ marginTop: 14 }}>
+          {result.cards.length > 1 && (
+            <label style={{ fontSize: "0.85rem", display: "block", marginBottom: 8 }}>
+              Card{" "}
+              <select value={card} onChange={(e) => setCard(e.target.value)} style={sel}>
+                <option value="">All cards ({result.cards.length})</option>
+                {result.cards.map((c) => (
+                  <option key={c} value={c}>
+                    Card ending {c.slice(-4)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <p style={{ fontSize: "0.9rem", marginBottom: 10 }}>
-            {result.lineCount} lines · charges {money(result.chargeTotal)}
-            {result.creditTotal > 0 ? ` · payments and credits ${money(result.creditTotal)} (left out)` : ""}
+            {shown.length} lines · charges {money(round(charges.reduce((s, l) => s + l.amount, 0)))}
+            {creditTotal > 0 ? ` · payments and credits ${money(creditTotal)} (left out)` : ""}
+            {` · ${bySource("receipt")} by receipt, ${bySource("manual")} by hand, ${bySource("rule")} by remembered vendor`}
             {result.autoMatchedNow > 0 ? ` · ${result.autoMatchedNow} receipts matched just now` : ""}
           </p>
           {result.problems.map((p) => (
@@ -77,17 +123,17 @@ export default function StatementTool() {
 
           <h4 style={{ fontSize: "0.95rem", margin: "10px 0 4px" }}>Split by job</h4>
           <div style={box}>
-            {result.split.map((s) => (
+            {split.map((s) => (
               <Row key={s.job} left={<>{s.job} <Sub>· {s.count} charge{s.count === 1 ? "" : "s"}</Sub></>} right={money(s.total)} />
             ))}
-            <Row left={<strong>No receipt matched yet</strong>} right={money(result.unmatchedTotal)} />
-            <Row left={<strong>Statement total</strong>} right={<strong>{money(result.split.reduce((s, x) => s + x.total, 0) + result.unmatchedTotal)}</strong>} />
+            <Row left={<strong>No job yet</strong>} right={money(unmatchedTotal)} />
+            <Row left={<strong>Statement total</strong>} right={<strong>{money(grand)}</strong>} />
           </div>
-          <div style={{ display: "flex", gap: 8, margin: "8px 0 16px" }}>
-            <button style={btn} onClick={() => download("split-by-job.csv", [["Job", "Charges", "Total"], ...result.split.map((s) => [s.job, s.count, s.total.toFixed(2)]), ["No receipt matched", "", result.unmatchedTotal.toFixed(2)]])}>
+          <div style={{ display: "flex", gap: 8, margin: "8px 0 16px", flexWrap: "wrap" }}>
+            <button style={btn} onClick={() => download("split-by-job.csv", [["Job", "Charges", "Total"], ...split.map((s) => [s.job, s.count, s.total.toFixed(2)]), ["No job yet", unmatched.length, unmatchedTotal.toFixed(2)]])}>
               Download split (CSV)
             </button>
-            <button style={btn} onClick={() => download("statement-detail.csv", [["Date", "Description", "Card", "Amount", "Job", "Receipt"], ...result.lines.filter((l) => !l.credit).map((l) => [l.date, l.description, l.card, l.amount.toFixed(2), l.job || "", l.receipt || ""])])}>
+            <button style={btn} onClick={() => download("statement-detail.csv", [["Date", "Description", "Card", "Amount", "Job", "How"], ...charges.map((l) => [l.date, l.description, l.card, l.amount.toFixed(2), l.job || "", l.source ? SOURCE_LABEL[l.source] : ""])])}>
               Download every charge with its job (CSV)
             </button>
           </div>
@@ -108,7 +154,7 @@ export default function StatementTool() {
                       </>
                     }
                     right={
-                      <button disabled={pending} style={btn} onClick={() => confirm(r.receiptId, r.key)}>
+                      <button disabled={pending} style={btn} onClick={() => act(() => confirmStatementMatch(r.receiptId, r.key))}>
                         Confirm match
                       </button>
                     }
@@ -118,12 +164,84 @@ export default function StatementTool() {
             </>
           )}
 
-          <details style={{ marginTop: 14 }}>
-            <summary style={{ cursor: "pointer", fontWeight: 600 }}>Charges with no receipt ({result.lines.filter((l) => !l.credit && !l.job).length})</summary>
+          <h4 style={{ fontSize: "0.95rem", margin: "14px 0 2px" }}>Charges with no job yet ({unmatched.length})</h4>
+          <p style={{ color: "var(--muted)", fontSize: "0.78rem", marginBottom: 4 }}>No scanned receipt matched these. Put one on a job yourself, and tick the box to remember the vendor (a hardware store that is always shop supplies, for example) so next month's charge lands there on its own.</p>
+          <div style={box}>
+            {unmatched.map((l) => (
+              <div key={l.key} style={{ borderBottom: "1px solid var(--border)", padding: "9px 0", fontSize: "0.88rem" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                  <div>
+                    {l.description} <Sub>· {l.date}{l.card ? ` · card ${l.card.slice(-4)}` : ""}</Sub>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <span style={{ fontFamily: "var(--font-mono)" }}>{money(l.amount)}</span>
+                    <button style={btn} onClick={() => { setAssigning(assigning === l.key ? null : l.key); setPickJob(""); setRemember(false); }}>
+                      Assign to a job
+                    </button>
+                  </div>
+                </div>
+                {assigning === l.key && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginTop: 8 }}>
+                    <select value={pickJob} onChange={(e) => setPickJob(e.target.value)} style={{ ...sel, minWidth: 240 }}>
+                      <option value="">Pick a job…</option>
+                      {result.jobOptions.map((j) => (
+                        <option key={j.id} value={j.id}>
+                          {j.label}
+                        </option>
+                      ))}
+                    </select>
+                    <label style={{ fontSize: "0.8rem" }}>
+                      <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Always use this job for this vendor
+                    </label>
+                    <button disabled={pending || !pickJob} style={{ ...btn, background: "var(--rust)", color: "var(--rust-ink)" }} onClick={() => act(() => assignCharge({ key: l.key, date: l.date, description: l.description, amount: l.amount, card: l.card }, pickJob, remember))}>
+                      Save
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+            {!unmatched.length && <p style={{ color: "var(--muted)", padding: "10px 0", fontSize: "0.85rem" }}>Every charge has a job.</p>}
+          </div>
+
+          {charges.some((l) => l.source === "manual" || l.source === "rule") && (
+            <details style={{ marginTop: 12 }}>
+              <summary style={{ cursor: "pointer", fontWeight: 600 }}>Charges put on a job without a receipt ({charges.filter((l) => l.source === "manual" || l.source === "rule").length})</summary>
+              <div style={box}>
+                {charges.filter((l) => l.source === "manual" || l.source === "rule").map((l) => (
+                  <Row
+                    key={l.key}
+                    left={<>{l.description} <Sub>· {l.date} · {l.job} · {l.source === "rule" ? `remembered vendor “${l.ruleLabel}”` : "assigned by hand"}</Sub></>}
+                    right={
+                      <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+                        {money(l.amount)}
+                        {l.source === "manual" && (
+                          <button disabled={pending} style={btn} onClick={() => act(() => clearChargeAssignment(l.key))}>
+                            Clear
+                          </button>
+                        )}
+                      </span>
+                    }
+                  />
+                ))}
+              </div>
+            </details>
+          )}
+
+          <details style={{ marginTop: 10 }}>
+            <summary style={{ cursor: "pointer", fontWeight: 600 }}>Remembered vendors ({result.rules.length})</summary>
             <div style={box}>
-              {result.lines.filter((l) => !l.credit && !l.job).map((l) => (
-                <Row key={l.key} left={<>{l.description} <Sub>· {l.date}{l.card ? ` · card ${l.card}` : ""}</Sub></>} right={money(l.amount)} />
+              {result.rules.map((r) => (
+                <Row
+                  key={r.id}
+                  left={<>{r.label} <Sub>→ {r.job}</Sub></>}
+                  right={
+                    <button disabled={pending} style={btn} onClick={() => act(() => removeVendorRule(r.id))}>
+                      Forget
+                    </button>
+                  }
+                />
               ))}
+              {!result.rules.length && <p style={{ color: "var(--muted)", padding: "10px 0", fontSize: "0.85rem" }}>None yet. Tick &ldquo;Always use this job for this vendor&rdquo; when you assign a charge.</p>}
             </div>
           </details>
 
@@ -152,3 +270,4 @@ function Row({ left, right }: { left: React.ReactNode; right: React.ReactNode })
 const Sub = ({ children }: { children: React.ReactNode }) => <span style={{ color: "var(--muted)", fontSize: "0.8rem" }}>{children}</span>;
 const box: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "2px 14px" };
 const btn: React.CSSProperties = { background: "var(--surface-2)", color: "var(--ink)", border: "none", borderRadius: 6, padding: "7px 12px", fontWeight: 600, cursor: "pointer", fontSize: "0.8rem" };
+const sel: React.CSSProperties = { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px", fontSize: "0.85rem", color: "var(--ink)", fontFamily: "inherit" };

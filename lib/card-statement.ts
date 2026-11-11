@@ -117,6 +117,26 @@ export function parseCardCsv(text: string): ParsedStatement {
   return { lines, problems };
 }
 
+// A recurring vendor's pattern from a statement description: its first two meaningful words, with store numbers, states and
+// one-letter bits dropped ("SAM'S CLUB #8123 BATON ROUGE LA" -> "sam club"), so the same store matches next month.
+const NOISE = new Set(["inc", "llc", "co", "corp", "the", "of", "and", "pos", "purchase", "debit", "card", "www", "com", "la", "ms", "tx", "al", "ar", "fl", "tst", "sq", "sp", "pp", "pos"]); // tst/sq/sp/pp: Toast, Square, Shopify and PayPal prefixes
+export function vendorWords(description: string): string[] {
+  return description
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(" ")
+    .filter((w) => w.length > 1 && !/\d/.test(w) && !NOISE.has(w));
+}
+export function vendorPattern(description: string): string {
+  return vendorWords(description).slice(0, 2).join(" ");
+}
+// True when every word of the pattern appears in the charge's description.
+export function patternMatches(pattern: string, description: string): boolean {
+  if (!pattern) return false;
+  const have = new Set(vendorWords(description));
+  return pattern.split(" ").every((w) => have.has(w));
+}
+
 // The statement as the charge list the matcher works on (credits and payments are kept out of matching).
 export function statementCharges(lines: StatementLine[]): Charge[] {
   return lines.map((l) => ({ id: l.key, date: l.date, amount: l.amount, vendor: l.description, memo: "", coded: false, credit: l.credit }));
