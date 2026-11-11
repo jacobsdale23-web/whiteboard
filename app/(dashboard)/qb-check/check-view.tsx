@@ -49,7 +49,13 @@ export default function CheckView({ check, qbCount, next }: { check: Data; qbCou
       <Block title={`In White Board, no number yet (${check.wbNoNumber.length})`} empty="Every open job has a number." hint="Creating the job in QuickBooks gives it the next number and writes the number back here. It is a real change in your books.">
         {check.wbNoNumber.map((p) => (
           <Row key={p.id} left={<><Link href={`/projects/${p.id}`} style={{ textDecoration: "underline" }}>{p.name}</Link>{p.customer ? <Sub> · {p.customer}</Sub> : <Sub> · no customer</Sub>} <Sub>· {p.status}</Sub></>}>
-            <CreateButton id={p.id} next={`about ${next}`} confirming={confirming} setConfirming={setConfirming} pending={pending} onGo={() => run(() => createJobInQuickBooks(p.id))} name={p.name} customer={p.customer} />
+            {p.customer ? (
+              <CreateButton id={p.id} next={`about ${next}`} confirming={confirming} setConfirming={setConfirming} pending={pending} onGo={() => run(() => createJobInQuickBooks(p.id))} name={p.name} customer={p.customer} />
+            ) : (
+              <Link href={`/projects/${p.id}`} style={{ color: "var(--muted)", fontSize: "0.78rem", textDecoration: "underline" }}>
+                Set the customer first
+              </Link>
+            )}
           </Row>
         ))}
       </Block>
@@ -63,11 +69,14 @@ export default function CheckView({ check, qbCount, next }: { check: Data; qbCou
       </Block>
 
       {check.nameDiffs.length > 0 && (
-        <Block title={`Same number, different name (${check.nameDiffs.length})`} empty="" hint="For information. Often just wording.">
-          {check.nameDiffs.map((d) => (
-            <Row key={d.number} left={<><Num n={d.number} /> White Board: {d.wb} <Sub>· QuickBooks: {d.qb}</Sub></>} />
-          ))}
-        </Block>
+        <details>
+          <summary style={{ cursor: "pointer", fontWeight: 600, marginBottom: 8 }}>Same number, different name ({check.nameDiffs.length}) — for information, often just wording</summary>
+          <Block title="" hint="" empty="">
+            {check.nameDiffs.map((d, i) => (
+              <Row key={`${d.number}-${i}`} left={<><Num n={d.number} /> White Board: {d.wb} <Sub>· QuickBooks: {d.qb}</Sub></>} />
+            ))}
+          </Block>
+        </details>
       )}
     </div>
   );

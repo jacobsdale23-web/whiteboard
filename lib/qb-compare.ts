@@ -14,6 +14,9 @@ export function parseJobName(displayName: string): { number: string; name: strin
 // QuickBooks numbers the office knows about and has chosen not to add or match (see the twice-weekly check), plus the shop.
 export const IGNORED_QB_NUMBERS = new Set(["26006", "26007", "26012", "26013", "26016", "26017", "26019", "26030", "26066", "26098", "26000"]);
 
+// White Board numbers that are not expected to exist in QuickBooks (the training job).
+export const IGNORED_WB_NUMBERS = new Set(["26TRAIN"]);
+
 const same = (a: string, b: string) => a.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() === b.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
 export type QbCheck = {
@@ -33,7 +36,7 @@ export function compareJobs(wb: WbProjectLite[], qb: QbJobLite[], yy: string): Q
   for (const p of wb) if (p.projectNumber && !wbByNumber.has(p.projectNumber)) wbByNumber.set(p.projectNumber, p);
 
   const qbOnly = qb.filter((j) => j.number.startsWith(yy) && j.active && !IGNORED_QB_NUMBERS.has(j.number) && !wbByNumber.has(j.number));
-  const wbNotInQb = wb.filter((p) => p.projectNumber && p.jobKind !== "fwi_hot_tap" && !qbByNumber.has(p.projectNumber));
+  const wbNotInQb = wb.filter((p) => p.projectNumber && p.jobKind !== "fwi_hot_tap" && !IGNORED_WB_NUMBERS.has(p.projectNumber) && !qbByNumber.has(p.projectNumber));
   const wbNoNumber = wb.filter((p) => !p.projectNumber && p.jobKind !== "fwi_hot_tap" && ["upcoming", "active", "on_hold"].includes(p.status));
   const nameDiffs: QbCheck["nameDiffs"] = [];
   let matched = 0;
