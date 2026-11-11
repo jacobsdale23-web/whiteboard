@@ -14,6 +14,7 @@ type Project = {
   crew: string[] | null;
   billingType: string;
   projectNumber: string | null;
+  pm: string | null;
 };
 
 type Filter = "all" | "complete" | "billed" | "canceled";
@@ -40,7 +41,8 @@ export default function CompletedList({ projects, canEdit }: { projects: Project
         (!q ||
           p.name.toLowerCase().includes(q) ||
           (p.projectNumber || "").toLowerCase().includes(q) ||
-          (p.location || "").toLowerCase().includes(q))
+          (p.location || "").toLowerCase().includes(q) ||
+          (p.pm || "").toLowerCase().includes(q))
     );
   }, [sorted, query, filter]);
 
@@ -74,7 +76,7 @@ export default function CompletedList({ projects, canEdit }: { projects: Project
       </div>
       <input
         type="text"
-        placeholder="Search by name, project number, or location…"
+        placeholder="Search by name, project number, location, or PM…"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         style={{ ...inputStyle, marginBottom: 16, maxWidth: 420 }}
@@ -94,6 +96,7 @@ export default function CompletedList({ projects, canEdit }: { projects: Project
                     {p.status === "canceled" && <span style={{ ...tmChipStyle, background: "var(--danger)", color: "#fff" }}>Canceled</span>}
                   </div>
                   <div style={{ color: "var(--muted)", fontSize: "0.8rem" }}>{p.location}</div>
+                  <div style={{ color: "var(--muted)", fontSize: "0.8rem" }}>PM: {p.pm || "—"}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontSize: "0.8rem" }}>Completed: {p.endDate || "—"}</div>
