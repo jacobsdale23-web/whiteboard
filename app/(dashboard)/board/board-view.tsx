@@ -125,6 +125,11 @@ export default function BoardView({
             QuickBooks check
           </Link>
         )}
+        {showQbCheck && (
+          <Link href="/receipt-match" style={{ background: "var(--surface-2)", color: "var(--ink)", borderRadius: 6, padding: "9px 16px", fontWeight: 600, fontSize: "0.88rem", textDecoration: "none" }}>
+            Receipt match
+          </Link>
+        )}
         {!readOnly && <ProjectFormModal crewList={foremen} pmList={pms} parentOptions={parentOptions} showNotes={showNotes} />}
       </div>
 

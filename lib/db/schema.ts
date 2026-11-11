@@ -324,6 +324,12 @@ export const receipts = pgTable("receipts", {
   aiAmount: numeric("ai_amount"),
   submittedBy: text("submitted_by").notNull(),
   submittedById: text("submitted_by_id").notNull(),
+  // The card charge in QuickBooks this receipt was matched to (Purchase id), who confirmed it, and when the charge was
+  // coded to the job in QuickBooks. Set only from the Receipt match page.
+  qbTxnId: text("qb_txn_id"),
+  qbMatchedAt: timestamp("qb_matched_at"),
+  qbMatchedBy: text("qb_matched_by"),
+  qbCodedAt: timestamp("qb_coded_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
