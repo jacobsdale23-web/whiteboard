@@ -5,7 +5,6 @@ import { saveOpportunity, type OpportunityFormState } from "./actions";
 
 const KINDS = ["Opportunity", "Meeting"];
 const OPP_TYPES = ["Bid Job", "Meeting", "Hot Tap", "FWI Hot Tap", "O&M", "T&M (Atmos)"];
-const ESTIMATORS = ["Jacob", "Chris", "Daryl", "Cavin", "Ross", "Paul"];
 
 type OpportunityRow = {
   id: string;
@@ -22,7 +21,11 @@ async function submit(_prev: OpportunityFormState, formData: FormData) {
   return saveOpportunity(_prev, formData);
 }
 
-export default function OpportunityFormModal({ opportunity }: { opportunity?: OpportunityRow }) {
+export default function OpportunityFormModal({ opportunity, estimators }: { opportunity?: OpportunityRow; estimators: string[] }) {
+  // The PM list. An estimator who has since left the list stays selectable on the opportunities that already have them.
+  const current = opportunity?.estimator || "";
+  const options = current && !estimators.includes(current) ? [current, ...estimators] : estimators;
+  const defaultEstimator = current || (estimators.includes("Jacob") ? "Jacob" : estimators[0] || "");
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState<OpportunityFormState, FormData>(submit, null);
   const isEdit = !!opportunity;
@@ -78,8 +81,8 @@ export default function OpportunityFormModal({ opportunity }: { opportunity?: Op
             </Field>
 
             <Field label="Estimator">
-              <select name="estimator" defaultValue={opportunity?.estimator || "Jacob"} style={inputStyle}>
-                {ESTIMATORS.map((e) => (
+              <select name="estimator" defaultValue={defaultEstimator} style={inputStyle}>
+                {options.map((e) => (
                   <option key={e} value={e}>
                     {e}
                   </option>

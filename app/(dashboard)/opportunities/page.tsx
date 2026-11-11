@@ -9,6 +9,7 @@ import OpportunityFormModal from "./opportunity-form-modal";
 import StatusPill from "./status-pill";
 import DeleteButton from "./delete-button";
 import { oppTypeColor } from "@/lib/job-kinds";
+import { getPmPool } from "@/lib/pms";
 
 type OpportunityRow = typeof opportunities.$inferSelect;
 
@@ -23,6 +24,7 @@ export default async function OpportunitiesPage() {
   if (ws && isSafetyViewer(ws.profile)) redirect("/board");
   const company = await requireCompany();
   const rows = await db.select().from(opportunities).where(eq(opportunities.companyId, company.id));
+  const estimators = await getPmPool(); // the same people as the PM list, so a won bid's estimator becomes the job's PM
   const active = rows.filter((o) => o.bidStatus !== "Lost" && o.bidStatus !== "Abandoned").sort(byBidDueDate);
   const archived = rows.filter((o) => o.bidStatus === "Lost" || o.bidStatus === "Abandoned").sort(byBidDueDate);
 
@@ -30,12 +32,12 @@ export default async function OpportunitiesPage() {
     <section>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <h2>Opportunities ({active.length})</h2>
-        <OpportunityFormModal />
+        <OpportunityFormModal estimators={estimators} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
         {active.map((o) => (
-          <OpportunityCard key={o.id} o={o} />
+          <OpportunityCard key={o.id} o={o} estimators={estimators} />
         ))}
         {!active.length && (
           <p style={{ color: "var(--muted)" }}>No opportunities yet. Add one with &ldquo;+ New Opportunity&rdquo;.</p>
@@ -49,7 +51,7 @@ export default async function OpportunitiesPage() {
           </summary>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14, marginTop: 14 }}>
             {archived.map((o) => (
-              <OpportunityCard key={o.id} o={o} />
+              <OpportunityCard key={o.id} o={o} estimators={estimators} />
             ))}
           </div>
         </details>
@@ -58,7 +60,7 @@ export default async function OpportunitiesPage() {
   );
 }
 
-function OpportunityCard({ o }: { o: OpportunityRow }) {
+function OpportunityCard({ o, estimators }: { o: OpportunityRow; estimators: string[] }) {
   return (
     <div
       style={{
@@ -80,7 +82,7 @@ function OpportunityCard({ o }: { o: OpportunityRow }) {
           <div style={{ color: "var(--muted)", fontSize: "0.8rem" }}>{o.location}</div>
         </div>
         <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-          <OpportunityFormModal opportunity={o} />
+          <OpportunityFormModal opportunity={o} estimators={estimators} />
           <DeleteButton id={o.id} jobName={o.jobName} />
         </div>
       </div>
