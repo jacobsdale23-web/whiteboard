@@ -1,7 +1,6 @@
 {
   "crons": [
     { "path": "/api/cron/weekly-jsa", "schedule": "0 21 * * 5" },
-    { "path": "/api/cron/weekly-jsa", "schedule": "0 22 * * 5" },
-    { "path": "/api/cron/receipt-match", "schedule": "0 12 * * *" }
+    { "path": "/api/cron/weekly-jsa", "schedule": "0 22 * * 5" }
   ]
 }

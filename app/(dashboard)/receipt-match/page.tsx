@@ -9,6 +9,7 @@ import { getConnection, qbConfig } from "@/lib/quickbooks";
 import { listCardAccounts, listCardCharges } from "@/lib/qb-cards";
 import { matchReceipts, type ReceiptLite } from "@/lib/receipt-match";
 import MatchView from "./match-view";
+import StatementTool from "./statement-tool";
 
 export const dynamic = "force-dynamic";
 
@@ -27,15 +28,13 @@ export default async function ReceiptMatchPage({ searchParams }: { searchParams:
     </section>
   );
   if (company.id !== "fwi") return box(<p style={{ color: "var(--muted)" }}>This works for Feliciana Welders only for now. Switch company at the top right.</p>);
-  if (!qbConfig().configured) return box(<p style={{ color: "var(--muted)" }}>QuickBooks isn&apos;t set up for White Board yet.</p>);
-  if (!(await getConnection(company.id))) {
+  // The Capital One file upload needs no QuickBooks connection; the booked-charge view below it does.
+  if (!qbConfig().configured || !(await getConnection(company.id))) {
     return box(
-      <p>
-        QuickBooks isn&apos;t connected for this company.{" "}
-        <a href="/api/quickbooks/connect?returnTo=/receipt-match" style={{ textDecoration: "underline" }}>
-          Connect QuickBooks
-        </a>
-      </p>
+      <>
+        <StatementTool />
+        <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>QuickBooks isn&apos;t connected for this company, so booked card charges can&apos;t be read.</p>
+      </>
     );
   }
 
@@ -86,8 +85,13 @@ export default async function ReceiptMatchPage({ searchParams }: { searchParams:
     <section>
       <h2 style={{ marginBottom: 6 }}>Receipt match</h2>
       <p style={{ color: "var(--muted)", fontSize: "0.85rem", marginBottom: 14 }}>
-        Matches the receipts foremen scan to the card charges booked in QuickBooks. <Link href="/board" style={{ textDecoration: "underline" }}>Back to Board</Link>
+        Matches the receipts foremen scan to Capital One charges. <Link href="/board" style={{ textDecoration: "underline" }}>Back to Board</Link>
       </p>
+      <StatementTool />
+      <details>
+      <summary style={{ cursor: "pointer", fontWeight: 600, marginBottom: 10 }}>
+        Charges booked one by one in QuickBooks ({charges.length} found{charges.length === 0 ? "; your Capital One charges are booked as a lump, so use the statement file above" : ""})
+      </summary>
       <form method="get" style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 14, fontSize: "0.85rem" }}>
         <label>
           Card{" "}
@@ -130,6 +134,7 @@ export default async function ReceiptMatchPage({ searchParams }: { searchParams:
           receiptsWithoutCharge={result.receiptsWithoutCharge.map((r) => ({ id: r.id, vendor: r.vendor, amount: r.amount, date: r.date, project: r.projectName, by: r.submittedBy }))}
         />
       )}
+      </details>
     </section>
   );
 }
