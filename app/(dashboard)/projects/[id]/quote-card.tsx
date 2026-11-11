@@ -136,6 +136,7 @@ function QuoteBlock({
   const [markBilled, setMarkBilled] = useState(true);
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState("");
+  const [confirming, setConfirming] = useState(false);
 
   // The invoice PDF straight from QuickBooks, to email by hand.
   async function downloadPdf() {
@@ -153,9 +154,9 @@ function QuoteBlock({
   }
 
   // Creates the invoice in QuickBooks from this quote and opens it there to review.
+  // Confirmed on the page itself: a browser confirm() pop-up can be blocked or dismissed, which made the button look dead.
   function createInvoice() {
-    const warn = ready ? "" : "\n\nHeads up: the Before you bill checks aren't all clear.";
-    if (!confirm(`Create the invoice for quote #${q.number} (${money(q.total)}) in QuickBooks${qb.companyName ? ` (${qb.companyName})` : ""}? It is saved there, not emailed, and opens for you to review.${warn}`)) return;
+    setConfirming(false);
     setInfo("");
     const show = openLater();
     void run(async () => {
@@ -299,9 +300,24 @@ function QuoteBlock({
           <>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             {qb.connected ? (
-              <button onClick={createInvoice} disabled={busy} style={primaryBtnStyle} title="Creates the invoice in QuickBooks from this quote, with the daily logs attached, and opens it">
-                {busy ? "Creating…" : "Create invoice in QuickBooks"}
-              </button>
+              confirming ? (
+                <div style={{ flexBasis: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", fontSize: "0.86rem" }}>
+                  Create the invoice for quote #{q.number} ({money(q.total)}) in QuickBooks{qb.companyName ? ` (${qb.companyName})` : ""}? It is saved there, not emailed, and opens for you to review.
+                  {!ready && <div style={{ color: "var(--danger)", marginTop: 4 }}>Heads up: the Before you bill checks aren&apos;t all clear.</div>}
+                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                    <button onClick={createInvoice} disabled={busy} style={primaryBtnStyle}>
+                      Yes, create it
+                    </button>
+                    <button onClick={() => setConfirming(false)} style={secondaryBtnStyle}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => setConfirming(true)} disabled={busy} style={primaryBtnStyle} title="Creates the invoice in QuickBooks from this quote, with the daily logs attached, and opens it">
+                  {busy ? "Creating…" : "Create invoice in QuickBooks"}
+                </button>
+              )
             ) : (
               <>
                 <a href={q.qbLink || "https://qbo.intuit.com/app/estimates"} target="_blank" rel="noreferrer" style={{ ...primaryBtnStyle, textDecoration: "none", display: "inline-block" }}>
