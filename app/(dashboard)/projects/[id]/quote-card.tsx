@@ -10,6 +10,7 @@ import { openLater } from "@/lib/open-later";
 import { downloadBase64 } from "@/lib/download-file";
 import { downloadQbInvoicePdf } from "./quickbooks-actions";
 import { qbInvoiceLink } from "@/lib/qb-invoice";
+import QbHelp from "./qb-help";
 
 type CardLog = { id: string; date: string; foreman: string | null; description: string | null; scopeChange: boolean };
 
@@ -330,6 +331,7 @@ function QuoteBlock({
             </span>
           </div>
           {info && <p style={{ fontSize: "0.8rem", color: "var(--ink-soft)", marginTop: 8 }}>{info}</p>}
+          {qb.configured && <QbHelp />}
           </>
         )}
       </div>

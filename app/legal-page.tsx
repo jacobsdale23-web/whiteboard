@@ -25,4 +25,4 @@ export function Section({ title, children }: { title: string; children: ReactNod
   );
 }
 
-export const CONTACT_EMAIL = "jdale@felicianawelders.com";
+export { CONTACT_EMAIL } from "@/lib/contact";

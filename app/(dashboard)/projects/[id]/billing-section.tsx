@@ -21,6 +21,7 @@ import {
   unacknowledgeWarning,
 } from "./billing-actions";
 import { sendInvoiceToQuickBooks, disconnectQuickBooks, downloadQbInvoicePdf } from "./quickbooks-actions";
+import QbHelp from "./qb-help";
 import { openLater } from "@/lib/open-later";
 import { downloadBase64 } from "@/lib/download-file";
 import { qbInvoiceLink } from "@/lib/qb-invoice";
@@ -518,6 +519,7 @@ function InvoiceCard({ projectId, invoice, tasks, qb }: { projectId: string; inv
           )}
           {msg && <p style={{ color: "var(--danger, #c0392b)", fontSize: "0.82rem", marginBottom: 10 }}>{msg}</p>}
           {qbNote && <p style={{ color: "var(--ink-soft)", fontSize: "0.82rem", marginBottom: 10 }}>{qbNote}</p>}
+          {!isDraft && qb.configured && <QbHelp />}
           {!isDraft && qb.connected && (
             <p style={{ fontSize: "0.72rem", color: "var(--muted)", marginBottom: 8 }}>
               QuickBooks: {qb.companyName || "connected"} ·{" "}
