@@ -367,6 +367,7 @@ function InvoiceCard({ projectId, invoice, tasks, qb }: { projectId: string; inv
   const [expanded, setExpanded] = useState(false);
   const [msg, setMsg] = useState("");
   const [qbNote, setQbNote] = useState("");
+  const [confirmSend, setConfirmSend] = useState(false);
   const [pending, startTransition] = useTransition();
   const task = tasks.find((t) => t.id === invoice.billingTaskId);
   // `warnings` is what is still open; flags marked "not a mistake" are kept apart in `settled`.
@@ -590,24 +591,43 @@ function InvoiceCard({ projectId, invoice, tasks, qb }: { projectId: string; inv
               </button>
             )}
             {!isDraft && !invoice.qbInvoiceId && qb.connected && (
-              <button
-                disabled={pending}
-                onClick={() => {
-                  if (!confirm(`Create this invoice in QuickBooks${qb.companyName ? ` (${qb.companyName})` : ""} for $${Number(invoice.total).toLocaleString()}? It is saved there, not emailed.`)) return;
-                  setQbNote("");
-                  const show = openLater(); // opens the new invoice in QuickBooks when it is ready
-                  run(async () => {
-                    const res = await sendInvoiceToQuickBooks(projectId, invoice.id);
-                    if (res.note) setQbNote(res.note);
-                    show(res.link);
-                    return res;
-                  });
-                }}
-                style={primaryBtnStyle}
-                title="Creates this invoice in QuickBooks with the Per Man / Per Welder lines and attaches the Excel backup"
-              >
-                {pending ? "Sending…" : "Send to QuickBooks"}
-              </button>
+              confirmSend ? (
+                // Confirmed on the page: a browser confirm() pop-up can be blocked, which made the button look dead.
+                <div style={{ flexBasis: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", fontSize: "0.86rem" }}>
+                  Create this invoice in QuickBooks{qb.companyName ? ` (${qb.companyName})` : ""} for ${Number(invoice.total).toLocaleString()}? It is saved there with the Excel backup attached, not emailed.
+                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                    <button
+                      disabled={pending}
+                      onClick={() => {
+                        setConfirmSend(false);
+                        setQbNote("");
+                        const show = openLater(); // opens the new invoice in QuickBooks when it is ready
+                        run(async () => {
+                          const res = await sendInvoiceToQuickBooks(projectId, invoice.id);
+                          if (res.note) setQbNote(res.note);
+                          show(res.link);
+                          return res;
+                        });
+                      }}
+                      style={primaryBtnStyle}
+                    >
+                      Yes, create it
+                    </button>
+                    <button onClick={() => setConfirmSend(false)} style={secondaryBtnStyle}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  disabled={pending}
+                  onClick={() => setConfirmSend(true)}
+                  style={primaryBtnStyle}
+                  title="Creates this invoice in QuickBooks with the Per Man / Per Welder lines and attaches the Excel backup"
+                >
+                  {pending ? "Sending…" : "Send to QuickBooks"}
+                </button>
+              )
             )}
             {!isDraft && !invoice.qbInvoiceId && !qb.connected && qb.configured && (
               <a href={`/api/quickbooks/connect?returnTo=${encodeURIComponent(`/projects/${projectId}`)}`} style={{ ...primaryBtnStyle, textDecoration: "none", display: "inline-block" }} title="One-time sign-in so White Board can create invoices in QuickBooks">
