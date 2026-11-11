@@ -112,7 +112,16 @@ export const projects = pgTable("projects", {
   billedThroughProjectId: text("billed_through_project_id"),
   // The office's notes for the crew (phone numbers, info about the job). Shown at the top of the project page to everyone.
   notes: text("notes"),
+  // The project manager (a name from project_managers). Carried over from the estimator when a won bid becomes a job.
+  pm: text("pm"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// The pool of project managers a job can be given. One list for every company: the same people manage jobs in all of them.
+export const projectManagers = pgTable("project_managers", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  active: boolean("active").notNull().default(true),
 });
 
 export const crew = pgTable("crew", {

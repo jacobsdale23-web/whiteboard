@@ -23,6 +23,8 @@ export type ProjectInput = {
   projectNumber: string | null;
   customer: string | null;
   jobKind?: string;
+  // Left out (undefined) by forms without a PM picker, so saving them never clears the PM.
+  pm?: string | null;
   billedThroughProjectId?: string | null;
   // Left out (undefined) by forms that don't show the notes box, so saving them never wipes the notes.
   notes?: string | null;
@@ -77,6 +79,7 @@ export async function saveProject(id: string | null, data: ProjectInput) {
     customer: data.customer?.trim() || null,
     jobKind,
     billedThroughProjectId,
+    ...(data.pm !== undefined ? { pm: data.pm?.trim().slice(0, 60) || null } : {}),
     ...(data.notes !== undefined ? { notes: data.notes?.trim().slice(0, MAX_NOTES) || null } : {}),
   };
 

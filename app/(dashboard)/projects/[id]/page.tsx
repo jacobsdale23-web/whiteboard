@@ -191,6 +191,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           <Fact label="Completion Date" value={project.endDate || "—"} />
           <Fact label="Duration" value={project.duration || "—"} />
           {!readOnly && <Fact label="Project Value" value={project.value ? `$${Number(project.value).toLocaleString()}` : "—"} />}
+          <Fact label="Project Manager" value={project.pm || "—"} />
           <Fact label="Crew" value={project.crew?.length ? project.crew.join(", ") : "Unassigned"} />
         </div>
       </div>

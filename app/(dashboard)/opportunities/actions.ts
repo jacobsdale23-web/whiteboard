@@ -88,6 +88,8 @@ export async function updateBidStatus(
         billingType: existing.oppType === "T&M (Atmos)" ? "tm" : "lump_sum",
         // A won Hot Tap / FWI Hot Tap starts as that kind of job (an FWI hot tap is then pointed at the job it is billed through).
         jobKind: jobKindFromOppType(existing.oppType),
+        // Whoever estimated the bid manages the job (the PM can be changed on the job afterwards).
+        pm: existing.estimator?.trim() || null,
       })
       .returning();
     await db.update(opportunities).set({ convertedProjectId: project.id }).where(eq(opportunities.id, id));

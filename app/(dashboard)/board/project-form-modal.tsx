@@ -22,6 +22,7 @@ type ProjectRow = {
   jobKind?: string;
   billedThroughProjectId?: string | null;
   notes?: string | null;
+  pm?: string | null;
 };
 type CrewMember = { id: string; name: string };
 
@@ -38,7 +39,7 @@ const BILLING_TYPES = [
   { value: "tm", label: "T&M" },
 ];
 
-export default function ProjectFormModal({ project, crewList, parentOptions = [], showNotes = false }: { project?: ProjectRow; crewList: CrewMember[]; parentOptions?: ParentOption[]; showNotes?: boolean }) {
+export default function ProjectFormModal({ project, crewList, pmList = [], parentOptions = [], showNotes = false }: { project?: ProjectRow; crewList: CrewMember[]; pmList?: CrewMember[]; parentOptions?: ParentOption[]; showNotes?: boolean }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -65,6 +66,7 @@ export default function ProjectFormModal({ project, crewList, parentOptions = []
       projectNumber: String(formData.get("projectNumber") || "").trim() || null,
       customer: String(formData.get("customer") || "").trim() || null,
       jobKind,
+      pm: String(formData.get("pm") || "").trim() || null,
       billedThroughProjectId: isFwiTap ? String(formData.get("billedThroughProjectId") || "") || null : null,
       // Only sent when the box is on the form, so a form without it never clears the notes.
       ...(showNotes ? { notes: String(formData.get("notes") || "") } : {}),
@@ -147,6 +149,18 @@ export default function ProjectFormModal({ project, crewList, parentOptions = []
             </Field>
             <Field label="Customer">
               <input type="text" name="customer" defaultValue={project?.customer || ""} style={inputStyle} />
+            </Field>
+            <Field label="Project Manager">
+              <select name="pm" defaultValue={project?.pm || ""} style={inputStyle}>
+                <option value="">Not assigned</option>
+                {/* A PM who was later removed from the list stays selectable on the jobs that already have them. */}
+                {project?.pm && !pmList.some((m) => m.name === project.pm) && <option value={project.pm}>{project.pm}</option>}
+                {pmList.map((m) => (
+                  <option key={m.id} value={m.name}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
             </Field>
             <Field label="Location">
               <input type="text" name="location" defaultValue={project?.location || ""} style={inputStyle} />

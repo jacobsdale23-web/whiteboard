@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ProjectFormModal, { type ParentOption } from "./project-form-modal";
+import ManagePeopleModal from "./manage-people-modal";
 import { JOB_KIND_COLORS, JOB_KIND_LABELS, cleanJobKind } from "@/lib/job-kinds";
 
 type BoardProject = {
@@ -23,6 +24,7 @@ type BoardProject = {
   billedThroughProjectId: string | null;
   billedThroughName: string | null; // the job an FWI hot tap is billed through
   notes: string | null;
+  pm: string | null;
 };
 type CompletedProject = { id: string; name: string; projectNumber: string | null; location: string | null; customer: string | null; endDate: string | null };
 type CrewMember = { id: string; name: string };
@@ -50,6 +52,8 @@ export default function BoardView({
   foremen,
   atShop,
   parentOptions,
+  pms,
+  canManagePeople = false,
   showNotes = false,
   readOnly = false,
 }: {
@@ -60,6 +64,8 @@ export default function BoardView({
   foremen: CrewMember[];
   atShop: CrewMember[];
   parentOptions: ParentOption[];
+  pms: CrewMember[];
+  canManagePeople?: boolean;
   showNotes?: boolean;
   readOnly?: boolean;
 }) {
@@ -69,9 +75,9 @@ export default function BoardView({
 
   const shown = useMemo(() => {
     if (!searching) return { active, upcoming, onHold, completed: [] as CompletedProject[], completedTotal: 0 };
-    const a = active.filter((p) => matches(q, p.name, p.projectNumber, p.location, p.customer, p.crew, JOB_KIND_LABELS[cleanJobKind(p.jobKind)]));
-    const u = upcoming.filter((p) => matches(q, p.name, p.projectNumber, p.location, p.customer, p.crew, JOB_KIND_LABELS[cleanJobKind(p.jobKind)]));
-    const h = onHold.filter((p) => matches(q, p.name, p.projectNumber, p.location, p.customer, p.crew, JOB_KIND_LABELS[cleanJobKind(p.jobKind)]));
+    const a = active.filter((p) => matches(q, p.name, p.projectNumber, p.location, p.customer, p.crew, p.pm, JOB_KIND_LABELS[cleanJobKind(p.jobKind)]));
+    const u = upcoming.filter((p) => matches(q, p.name, p.projectNumber, p.location, p.customer, p.crew, p.pm, JOB_KIND_LABELS[cleanJobKind(p.jobKind)]));
+    const h = onHold.filter((p) => matches(q, p.name, p.projectNumber, p.location, p.customer, p.crew, p.pm, JOB_KIND_LABELS[cleanJobKind(p.jobKind)]));
     const c = completed.filter((p) => matches(q, p.name, p.projectNumber, p.location, p.customer));
     return { active: a, upcoming: u, onHold: h, completed: c.slice(0, MAX_COMPLETED_SHOWN), completedTotal: c.length };
   }, [q, searching, active, upcoming, onHold, completed]);
@@ -111,7 +117,8 @@ export default function BoardView({
             </button>
           )}
         </div>
-        {!readOnly && <ProjectFormModal crewList={foremen} parentOptions={parentOptions} showNotes={showNotes} />}
+        {canManagePeople && <ManagePeopleModal pms={pms} foremen={foremen} />}
+        {!readOnly && <ProjectFormModal crewList={foremen} pmList={pms} parentOptions={parentOptions} showNotes={showNotes} />}
       </div>
 
       {searching && (
@@ -138,11 +145,12 @@ export default function BoardView({
                   <div style={{ marginTop: 8, fontSize: "0.85rem" }}>Completion: {p.endDate || "—"}</div>
                   {!readOnly && <div style={{ fontSize: "0.85rem" }}>Value: {p.value ? `$${Number(p.value).toLocaleString()}` : "—"}</div>}
                   <div style={{ fontSize: "0.85rem" }}>Crew: {(p.crew || []).join(", ") || "Unassigned"}</div>
+                  <div style={{ fontSize: "0.85rem" }}>PM: {p.pm || "—"}</div>
                   {!p.projectNumber && p.jobKind !== "fwi_hot_tap" && <NoNumberChip />}
                 </Link>
                 {!readOnly && (
                   <div style={{ position: "absolute", top: 14, right: 14 }}>
-                    <ProjectFormModal project={p} crewList={foremen} parentOptions={parentOptions} showNotes={showNotes} />
+                    <ProjectFormModal project={p} crewList={foremen} pmList={pms} parentOptions={parentOptions} showNotes={showNotes} />
                   </div>
                 )}
               </div>
@@ -168,12 +176,13 @@ export default function BoardView({
                   <KindTag p={p} />
                   <div style={{ color: "var(--muted)", fontSize: "0.85rem" }}>{p.location}</div>
                   <div style={{ marginTop: 8, fontSize: "0.85rem" }}>Start: {p.startDate || "TBD"}</div>
+                  <div style={{ fontSize: "0.85rem" }}>PM: {p.pm || "—"}</div>
                   {!p.projectNumber && p.jobKind !== "fwi_hot_tap" && <NoNumberChip />}
                   {!readOnly && <div style={{ fontSize: "0.85rem" }}>Value: {p.value ? `$${Number(p.value).toLocaleString()}` : "—"}</div>}
                 </Link>
                 {!readOnly && (
                   <div style={{ position: "absolute", top: 14, right: 14 }}>
-                    <ProjectFormModal project={p} crewList={foremen} parentOptions={parentOptions} showNotes={showNotes} />
+                    <ProjectFormModal project={p} crewList={foremen} pmList={pms} parentOptions={parentOptions} showNotes={showNotes} />
                   </div>
                 )}
               </div>
@@ -198,11 +207,12 @@ export default function BoardView({
                   <KindTag p={p} />
                   <div style={{ color: "var(--muted)", fontSize: "0.85rem" }}>{p.location}</div>
                   <div style={{ marginTop: 8, fontSize: "0.85rem" }}>Completion: {p.endDate || "—"}</div>
+                  <div style={{ fontSize: "0.85rem" }}>PM: {p.pm || "—"}</div>
                   {!readOnly && <div style={{ fontSize: "0.85rem" }}>Value: {p.value ? `$${Number(p.value).toLocaleString()}` : "—"}</div>}
                 </Link>
                 {!readOnly && (
                   <div style={{ position: "absolute", top: 14, right: 14 }}>
-                    <ProjectFormModal project={p} crewList={foremen} parentOptions={parentOptions} showNotes={showNotes} />
+                    <ProjectFormModal project={p} crewList={foremen} pmList={pms} parentOptions={parentOptions} showNotes={showNotes} />
                   </div>
                 )}
               </div>

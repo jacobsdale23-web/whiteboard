@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
-import { projects, crew } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { projects, crew, projectManagers } from "@/lib/db/schema";
+import { asc, eq } from "drizzle-orm";
 import { isSafetyViewer } from "@/lib/auth/current-user";
 import { getWorkspace, requireCompany } from "@/lib/auth/company";
 import BoardView from "./board-view";
@@ -11,6 +11,8 @@ export default async function BoardPage() {
   const readOnly = !!ws && isSafetyViewer(ws.profile);
   const allProjects = await db.select().from(projects).where(eq(projects.companyId, company.id));
   const allCrew = await db.select().from(crew).where(eq(crew.companyId, company.id));
+  const pmRows = await db.select().from(projectManagers).where(eq(projectManagers.active, true)).orderBy(asc(projectManagers.name));
+  const canManagePeople = !!ws && !readOnly && ws.profile.role === "admin";
 
   const byId = new Map(allProjects.map((p) => [p.id, p]));
   const labelOf = (p: (typeof allProjects)[number]) => (p.projectNumber ? `${p.projectNumber} · ${p.name}` : p.name);
@@ -34,6 +36,7 @@ export default async function BoardPage() {
       billedThroughProjectId: p.billedThroughProjectId,
       billedThroughName: parent ? labelOf(parent) : null,
       notes: p.notes,
+      pm: p.pm,
     };
   };
 
@@ -52,7 +55,7 @@ export default async function BoardPage() {
     .map((p) => ({ id: p.id, name: p.name, projectNumber: p.projectNumber, location: p.location, customer: p.customer, endDate: p.endDate }));
   // Individual crew workers (e.g. Jackson's T&M roster) stay in the crew
   // table for daily-log entry, but only foremen are ever displayed here.
-  const foremen = allCrew.filter((c) => c.role === "foreman");
+  const foremen = allCrew.filter((c) => c.role === "foreman" && c.active);
   const assignedNames = new Set(active.flatMap((p) => p.crew || []));
   const atShop = foremen.filter((c) => !assignedNames.has(c.name));
 
@@ -65,6 +68,8 @@ export default async function BoardPage() {
       foremen={foremen.map((c) => ({ id: c.id, name: c.name }))}
       atShop={atShop.map((c) => ({ id: c.id, name: c.name }))}
       parentOptions={parentOptions}
+      pms={pmRows.map((r) => ({ id: r.id, name: r.name }))}
+      canManagePeople={canManagePeople}
       showNotes={company.id === "om"}
       readOnly={readOnly}
     />
