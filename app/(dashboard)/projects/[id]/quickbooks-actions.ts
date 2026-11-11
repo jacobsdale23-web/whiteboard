@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { billingTasks, projectQuotes, tmInvoices } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
 import { requireProject } from "@/lib/auth/company";
-import { disconnect, findJobCustomer, getConnection, qbApi, qbAttach, qbConfig, qbInvoicePdf, qbQuery, QbError } from "@/lib/quickbooks";
+import { disconnect, findJobCustomer, getConnection, nextInvoiceNumber, qbApi, qbAttach, qbConfig, qbInvoicePdf, qbQuery, QbError } from "@/lib/quickbooks";
 import { buildCustomerMemo, buildQbLines, qbInvoiceLink } from "@/lib/qb-invoice";
 import { exportInvoiceExcel } from "./billing-actions";
 
@@ -45,8 +45,10 @@ export async function sendInvoiceToQuickBooks(projectId: string, invoiceId: stri
     if (!items.length) return { error: 'QuickBooks has no product/service called "Labor & Equipment".' };
 
     const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+    const docNumber = await nextInvoiceNumber(companyId);
     const payload = {
       CustomerRef: { value: customer.Id },
+      ...(docNumber ? { DocNumber: docNumber } : {}),
       TxnDate: today,
       CustomerMemo: { value: buildCustomerMemo(task, invoice.periodStart, invoice.periodEnd) },
       PrivateNote: `From White Board: T&M invoice ${task?.taskNumber || ""} ${invoice.periodStart} to ${invoice.periodEnd}`.trim(),
@@ -67,12 +69,12 @@ export async function sendInvoiceToQuickBooks(projectId: string, invoiceId: stri
       .where(eq(tmInvoices.id, invoiceId));
 
     // The Excel backup goes on the QuickBooks invoice too. If that fails the invoice is still there.
-    let note: string | undefined;
+    let note: string | undefined = docNumber ? undefined : "I couldn't work out the next invoice number, so the invoice has none yet. Type it in QuickBooks.";
     try {
       const { filename, base64 } = await exportInvoiceExcel(projectId, invoiceId);
       await qbAttach(companyId, "Invoice", qbInv.Id, filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Buffer.from(base64, "base64"));
     } catch {
-      note = "The invoice is in QuickBooks, but the Excel backup couldn't be attached to it. Export it from here and attach it.";
+      note = [note, "The invoice is in QuickBooks, but the Excel backup couldn't be attached to it. Export it from here and attach it."].filter(Boolean).join(" ");
     }
     revalidatePath(`/projects/${projectId}`);
     return { docNumber: qbInv.DocNumber, note, link: qbInvoiceLink(conn.realmId, qbInv.Id) };

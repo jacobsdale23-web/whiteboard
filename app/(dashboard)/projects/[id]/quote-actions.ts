@@ -10,7 +10,7 @@ import { requireProject } from "@/lib/auth/company";
 import { getObjectBuffer } from "@/lib/storage/s3";
 import { scanQuotePdf } from "@/lib/quote-scan";
 import { cleanQbLink, cleanQuoteFields, cleanQuoteLines } from "@/lib/quotes";
-import { findJobCustomer, getConnection, qbApi, qbAttach, qbConfig, qbQuery, qbQuote, QbError } from "@/lib/quickbooks";
+import { findJobCustomer, getConnection, nextInvoiceNumber, qbApi, qbAttach, qbConfig, qbQuery, qbQuote, QbError } from "@/lib/quickbooks";
 import { qbInvoiceLink } from "@/lib/qb-invoice";
 import { buildDailyLogsPdf } from "@/lib/daily-log-pdf";
 
@@ -176,8 +176,10 @@ export async function createInvoiceFromQuote(projectId: string, quoteId: string)
     if (!billTo) return { error: "The quote in QuickBooks has no customer." };
 
     const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+    const docNumber = await nextInvoiceNumber(companyId);
     const payload = {
       CustomerRef: { value: billTo },
+      ...(docNumber ? { DocNumber: docNumber } : {}),
       TxnDate: today,
       ...(est.CustomerMemo?.value ? { CustomerMemo: { value: est.CustomerMemo.value } } : {}),
       // The customer's email from the quote stays on the invoice (Jacob wants it there). It is only an address: nothing is
@@ -209,6 +211,7 @@ export async function createInvoiceFromQuote(projectId: string, quoteId: string)
 
     // The daily logs go on the invoice as backup. If that fails the invoice is still there.
     let note = typeof customer === "string" ? `Billed to ${est.CustomerRef?.name || "the quote's customer"}: QuickBooks has no job for ${project.projectNumber || "this project"} yet. You can change the customer on the invoice.` : undefined;
+    if (!docNumber) note = [note, "I couldn't work out the next invoice number, so the invoice has none yet. Type it in QuickBooks."].filter(Boolean).join(" ");
     try {
       const logs = await db.select().from(dailyLogs).where(eq(dailyLogs.projectId, projectId));
       if (logs.length) {

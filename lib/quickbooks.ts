@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { qbConnections } from "@/lib/db/schema";
 import { oauthEndpoints } from "@/lib/qb-oauth";
 import { intuitTid, logQbCall, refNote } from "@/lib/qb-log";
+import { firstFreeNumber, nextNumberAfter } from "@/lib/qb-invoice-number";
 
 // Direct connection to QuickBooks Online, so an approved White Board invoice can be created there with one click.
 // Needs an Intuit developer app (free) whose keys are set as QB_CLIENT_ID and QB_CLIENT_SECRET; QB_ENV is "production"
@@ -185,6 +186,27 @@ export const qbQuote = (s: string) => s.replace(/\\/g, "\\\\").replace(/'/g, "\\
 export async function qbQuery<T>(companyId: string, sql: string, entity: string): Promise<T[]> {
   const res = await qbApi<{ QueryResponse?: Record<string, T[]> }>(companyId, "GET", `/query?query=${encodeURIComponent(sql)}`);
   return res.QueryResponse?.[entity] || [];
+}
+
+// The number to give a new invoice so it continues the sequence QuickBooks's own screen would use. null means it
+// couldn't be worked out; the caller then tells the person to type one in QuickBooks.
+export async function nextInvoiceNumber(companyId: string): Promise<string | null> {
+  try {
+    const recent = await qbQuery<{ DocNumber?: string }>(companyId, "select DocNumber from Invoice order by Id desc maxresults 30", "Invoice");
+    const start = nextNumberAfter(recent);
+    if (!start) return null;
+    // Guard against a number that is already used (QuickBooks would let a duplicate through the API).
+    const taken = new Set<string>();
+    for (let i = 0; i < 5; i++) {
+      const candidate = firstFreeNumber(start, taken);
+      const used = await qbQuery<{ Id: string }>(companyId, `select Id from Invoice where DocNumber = '${qbQuote(candidate)}'`, "Invoice");
+      if (!used.length) return candidate;
+      taken.add(candidate);
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 type QbCustomer = { Id: string; DisplayName: string };
