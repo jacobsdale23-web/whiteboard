@@ -70,6 +70,7 @@ export default async function BoardPage() {
       parentOptions={parentOptions}
       pms={pmRows.map((r) => ({ id: r.id, name: r.name }))}
       canManagePeople={canManagePeople}
+      showQbCheck={canManagePeople && company.id === "fwi"}
       showNotes={company.id === "om"}
       readOnly={readOnly}
     />

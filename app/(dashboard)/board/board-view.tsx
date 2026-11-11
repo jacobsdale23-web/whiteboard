@@ -54,6 +54,7 @@ export default function BoardView({
   parentOptions,
   pms,
   canManagePeople = false,
+  showQbCheck = false,
   showNotes = false,
   readOnly = false,
 }: {
@@ -66,6 +67,7 @@ export default function BoardView({
   parentOptions: ParentOption[];
   pms: CrewMember[];
   canManagePeople?: boolean;
+  showQbCheck?: boolean;
   showNotes?: boolean;
   readOnly?: boolean;
 }) {
@@ -118,6 +120,11 @@ export default function BoardView({
           )}
         </div>
         {canManagePeople && <ManagePeopleModal pms={pms} foremen={foremen} />}
+        {showQbCheck && (
+          <Link href="/qb-check" style={{ background: "var(--surface-2)", color: "var(--ink)", borderRadius: 6, padding: "9px 16px", fontWeight: 600, fontSize: "0.88rem", textDecoration: "none" }}>
+            QuickBooks check
+          </Link>
+        )}
         {!readOnly && <ProjectFormModal crewList={foremen} pmList={pms} parentOptions={parentOptions} showNotes={showNotes} />}
       </div>
 
