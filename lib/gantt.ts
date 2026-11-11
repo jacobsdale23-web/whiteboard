@@ -11,6 +11,7 @@ export type GanttProject = {
   value: string | number | null;
   crew: string[] | null;
   jobKind?: string | null; // standard | hot_tap | fwi_hot_tap
+  pm?: string | null; // the project manager, for the calendar's PM filter
 };
 
 export type Bar = { start: Date; end: Date; cls: string; estimated: boolean };

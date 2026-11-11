@@ -70,17 +70,21 @@ function useItems(projects: GanttProject[]): Item[] {
 }
 
 const FILTER_KEY = "wb-calendar-job-filter";
+const PM_FILTER_KEY = "wb-calendar-pm-filter";
+const NO_PM = "__none"; // the "jobs with no PM yet" choice; "" means everyone
 
-export default function CalendarView({ projects: allProjects, events: allEvents, readOnly }: { projects: GanttProject[]; events: CalendarEvent[]; readOnly: boolean }) {
+export default function CalendarView({ projects: allProjects, events: allEvents, readOnly, pmPool }: { projects: GanttProject[]; events: CalendarEvent[]; readOnly: boolean; pmPool: string[] }) {
   const [mode, setMode] = useState<Mode>("timeline");
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
   const [filter, setFilter] = useState<KindFilter>("all");
+  const [pmFilter, setPmFilter] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Remember the last filter on this device (best effort: storage can be unavailable).
+  // Remember the last filters on this device (best effort: storage can be unavailable).
   useEffect(() => {
     try {
       setFilter(cleanKindFilter(localStorage.getItem(FILTER_KEY)));
+      setPmFilter(localStorage.getItem(PM_FILTER_KEY) || "");
     } catch {}
   }, []);
   function pickFilter(f: KindFilter) {
@@ -89,13 +93,30 @@ export default function CalendarView({ projects: allProjects, events: allEvents,
       localStorage.setItem(FILTER_KEY, f);
     } catch {}
   }
+  function pickPm(v: string) {
+    setPmFilter(v);
+    try {
+      localStorage.setItem(PM_FILTER_KEY, v);
+    } catch {}
+  }
 
-  const projects = useMemo(() => allProjects.filter((p) => kindMatchesFilter(filter, p.jobKind)), [allProjects, filter]);
-  const events = useMemo(() => allEvents.filter((e) => kindMatchesFilter(filter, jobKindFromOppType(e.oppType))), [allEvents, filter]);
+  // The pool, plus anyone who is on a job or a bid but no longer in the pool, so their work can still be filtered.
+  const pmOptions = useMemo(() => {
+    const names = new Set(pmPool);
+    for (const p of allProjects) if (p.pm) names.add(p.pm);
+    for (const e of allEvents) if (e.estimator) names.add(e.estimator);
+    if (pmFilter && pmFilter !== NO_PM) names.add(pmFilter); // a remembered choice always has its own option
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [pmPool, allProjects, allEvents, pmFilter]);
+  const pmMatches = (name: string | null | undefined) => (pmFilter === "" ? true : pmFilter === NO_PM ? !name : name === pmFilter);
+
+  // Bids and meetings go by their estimator, who becomes the job's PM when the bid is won.
+  const projects = useMemo(() => allProjects.filter((p) => kindMatchesFilter(filter, p.jobKind) && pmMatches(p.pm)), [allProjects, filter, pmFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  const events = useMemo(() => allEvents.filter((e) => kindMatchesFilter(filter, jobKindFromOppType(e.oppType)) && pmMatches(e.estimator)), [allEvents, filter, pmFilter]); // eslint-disable-line react-hooks/exhaustive-deps
   const items = useItems(projects);
   const selected = selectedId ? allProjects.find((p) => p.id === selectedId) ?? null : null;
-  const filtered = filter !== "all";
-  const filterLabel = KIND_FILTERS.find((f) => f.value === filter)?.label ?? "";
+  const filtered = filter !== "all" || pmFilter !== "";
+  const filterLabel = [KIND_FILTERS.find((f) => f.value === filter && f.value !== "all")?.label, pmFilter === NO_PM ? "No PM" : pmFilter && `PM ${pmFilter}`].filter(Boolean).join(" · ");
 
   const step = mode === "week" ? 7 : 1;
   const today = startOfDay(new Date());
@@ -164,10 +185,35 @@ export default function CalendarView({ projects: allProjects, events: allEvents,
             </button>
           );
         })}
+        <span style={{ fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 700, color: "var(--muted)", marginLeft: 12 }}>PM</span>
+        <select
+          value={pmFilter}
+          onChange={(e) => pickPm(e.target.value)}
+          aria-label="Filter by project manager"
+          style={{
+            border: `1px solid ${pmFilter ? "var(--rust)" : "var(--border)"}`,
+            background: pmFilter ? "var(--rust)" : "var(--surface)",
+            color: pmFilter ? "var(--rust-ink)" : "var(--ink)",
+            borderRadius: 20,
+            padding: "6px 12px",
+            fontWeight: 600,
+            fontSize: "0.82rem",
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          <option value="">All PMs</option>
+          {pmOptions.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+          <option value={NO_PM}>No PM yet</option>
+        </select>
       </div>
 
       {mode === "timeline" && filtered && !items.length && !events.length ? (
-        <div style={{ color: "var(--muted)", padding: 20 }}>Nothing on the calendar for “{filterLabel}”. Pick “All jobs” to see everything.</div>
+        <div style={{ color: "var(--muted)", padding: 20 }}>Nothing on the calendar for “{filterLabel}”. Pick “All jobs” and “All PMs” to see everything.</div>
       ) : null}
       {mode === "timeline" && !(filtered && !items.length && !events.length) && (
         <>

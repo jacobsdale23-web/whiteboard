@@ -3,12 +3,14 @@ import { opportunities, projects } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { isSafetyViewer } from "@/lib/auth/current-user";
 import { getWorkspace, requireCompany } from "@/lib/auth/company";
+import { getPmPool } from "@/lib/pms";
 import CalendarView from "./calendar-view";
 
 export default async function CalendarPage() {
   const ws = await getWorkspace();
   const company = await requireCompany();
   const readOnly = !!ws && isSafetyViewer(ws.profile);
+  const pmPool = await getPmPool();
   const [allProjects, allOpportunities] = await Promise.all([
     db.select().from(projects).where(eq(projects.companyId, company.id)),
     // Bids and meetings are estimating data; a safety coordinator doesn't see them.
@@ -33,6 +35,7 @@ export default async function CalendarPage() {
       <h2 style={{ marginBottom: 16 }}>Calendar</h2>
       <CalendarView
         readOnly={readOnly}
+        pmPool={pmPool}
         events={events}
         projects={allProjects.map((p) => ({
           id: p.id,
@@ -45,6 +48,7 @@ export default async function CalendarPage() {
           value: readOnly ? null : p.value,
           crew: p.crew,
           jobKind: p.jobKind,
+          pm: p.pm,
         }))}
       />
     </section>
