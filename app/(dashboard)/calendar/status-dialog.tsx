@@ -45,6 +45,7 @@ export default function StatusDialog({ project, readOnly, onClose }: { project: 
           <div>
             <div style={{ fontWeight: 700, fontSize: "1.05rem" }}>{project.name}</div>
             {project.location && <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>{project.location}</div>}
+            <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>PM: {project.pm || "Not assigned"}</div>
           </div>
           <button
             onClick={onClose}
