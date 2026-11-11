@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { qbConnections } from "@/lib/db/schema";
 import { oauthEndpoints } from "@/lib/qb-oauth";
+import { intuitTid, logQbCall, refNote } from "@/lib/qb-log";
 
 // Direct connection to QuickBooks Online, so an approved White Board invoice can be created there with one click.
 // Needs an Intuit developer app (free) whose keys are set as QB_CLIENT_ID and QB_CLIENT_SECRET; QB_ENV is "production"
@@ -67,7 +68,9 @@ async function tokenRequest(body: Record<string, string>): Promise<TokenResponse
     },
     body: new URLSearchParams(body),
   });
-  if (!res.ok) throw new Error(`QuickBooks sign-in failed (${res.status}).`);
+  const tid = intuitTid(res);
+  logQbCall({ op: `oauth ${body.grant_type}`, method: "POST", path: "/oauth2/v1/tokens/bearer", status: res.status, tid });
+  if (!res.ok) throw new Error(`QuickBooks sign-in failed (${res.status})${refNote(tid)}.`);
   return (await res.json()) as TokenResponse;
 }
 
@@ -144,6 +147,7 @@ export async function qbApi<T = Record<string, unknown>>(companyId: string, meth
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
+  const tid = intuitTid(res);
   if (!res.ok) {
     let detail = "";
     try {
@@ -152,9 +156,11 @@ export async function qbApi<T = Record<string, unknown>>(companyId: string, meth
     } catch {
       /* not JSON */
     }
-    if (res.status === 401) throw new QbError("QuickBooks turned down the connection. Connect QuickBooks again.");
-    throw new QbError(`QuickBooks said no${detail ? `: ${detail}` : ` (${res.status})`}.`);
+    logQbCall({ op: "api", method, path, status: res.status, tid, fault: detail });
+    if (res.status === 401) throw new QbError(`QuickBooks turned down the connection. Connect QuickBooks again.${refNote(tid)}`);
+    throw new QbError(`QuickBooks said no${detail ? `: ${detail}` : ` (${res.status})`}.${refNote(tid)}`);
   }
+  logQbCall({ op: "api", method, path, status: res.status, tid });
   return (await res.json()) as T;
 }
 
@@ -165,8 +171,10 @@ export async function qbInvoicePdf(companyId: string, invoiceId: string): Promis
   const res = await fetch(`${qbConfig().apiBase}/v3/company/${realmId}/invoice/${invoiceId}/pdf?minorversion=${MINOR_VERSION}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/pdf" },
   });
-  if (res.status === 401) throw new QbError("QuickBooks turned down the connection. Connect QuickBooks again.");
-  if (!res.ok) throw new QbError(`QuickBooks wouldn't give the PDF (${res.status}). Open the invoice in QuickBooks instead.`);
+  const tid = intuitTid(res);
+  logQbCall({ op: "invoice pdf", method: "GET", path: `/invoice/${invoiceId}/pdf`, status: res.status, tid });
+  if (res.status === 401) throw new QbError(`QuickBooks turned down the connection. Connect QuickBooks again.${refNote(tid)}`);
+  if (!res.ok) throw new QbError(`QuickBooks wouldn't give the PDF (${res.status}). Open the invoice in QuickBooks instead.${refNote(tid)}`);
   return Buffer.from(await res.arrayBuffer());
 }
 
@@ -217,5 +225,7 @@ export async function qbAttach(companyId: string, entity: "Invoice", entityId: s
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
     body: form,
   });
-  if (!res.ok) throw new QbError(`QuickBooks wouldn't take the attachment (${res.status}).`);
+  const tid = intuitTid(res);
+  logQbCall({ op: "attachment", method: "POST", path: "/upload", status: res.status, tid });
+  if (!res.ok) throw new QbError(`QuickBooks wouldn't take the attachment (${res.status}).${refNote(tid)}`);
 }
