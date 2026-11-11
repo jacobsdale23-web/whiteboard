@@ -3,6 +3,7 @@ import { projects } from "@/lib/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { isSafetyViewer } from "@/lib/auth/current-user";
 import { getWorkspace, requireCompany } from "@/lib/auth/company";
+import { getPmPool } from "@/lib/pms";
 import CompletedList from "./completed-list";
 
 export default async function CompletedPage() {
@@ -11,6 +12,7 @@ export default async function CompletedPage() {
   const hideValue = !!ws && isSafetyViewer(ws.profile);
   const rows = await db.select().from(projects).where(and(inArray(projects.status, ["complete", "billed", "canceled"]), eq(projects.companyId, company.id)));
   const completed = hideValue ? rows.map((p) => ({ ...p, value: null })) : rows;
+  const pmPool = await getPmPool();
 
   return (
     <section>
@@ -18,7 +20,7 @@ export default async function CompletedPage() {
       <p style={{ color: "var(--muted)", fontSize: "0.85rem", marginBottom: 18 }}>
         Finished jobs — open one to pull historical Daily Logs, JSAs, Budget, or T&amp;M invoices. Jobs still waiting to be billed stay on the calendar until you mark them billed.
       </p>
-      <CompletedList projects={completed} canEdit={!hideValue} />
+      <CompletedList projects={completed} canEdit={!hideValue} pmPool={pmPool} />
     </section>
   );
 }

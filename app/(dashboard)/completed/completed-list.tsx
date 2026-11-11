@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { setProjectBilled, setProjectStatus } from "../board/actions";
+import { setProjectBilled, setProjectPm, setProjectStatus } from "../board/actions";
 
 type Project = {
   id: string;
@@ -19,10 +19,22 @@ type Project = {
 
 type Filter = "all" | "complete" | "billed" | "canceled";
 
-export default function CompletedList({ projects, canEdit }: { projects: Project[]; canEdit: boolean }) {
+export default function CompletedList({ projects, canEdit, pmPool }: { projects: Project[]; canEdit: boolean; pmPool: string[] }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [pending, startTransition] = useTransition();
+  const [error, setError] = useState("");
+
+  function changePm(id: string, pm: string) {
+    setError("");
+    startTransition(async () => {
+      try {
+        await setProjectPm(id, pm || null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Couldn't change the PM.");
+      }
+    });
+  }
   const unbilled = projects.filter((p) => p.status === "complete").length;
 
   const sorted = useMemo(
@@ -82,6 +94,7 @@ export default function CompletedList({ projects, canEdit }: { projects: Project
         style={{ ...inputStyle, marginBottom: 16, maxWidth: 420 }}
       />
 
+      {error && <p style={{ color: "var(--danger)", fontSize: "0.85rem", marginBottom: 10 }}>{error}</p>}
       <div style={cardStyle}>
         {filtered.length ? (
           filtered.map((p) => (
@@ -96,7 +109,7 @@ export default function CompletedList({ projects, canEdit }: { projects: Project
                     {p.status === "canceled" && <span style={{ ...tmChipStyle, background: "var(--danger)", color: "#fff" }}>Canceled</span>}
                   </div>
                   <div style={{ color: "var(--muted)", fontSize: "0.8rem" }}>{p.location}</div>
-                  <div style={{ color: "var(--muted)", fontSize: "0.8rem" }}>PM: {p.pm || "—"}</div>
+                  {!canEdit && <div style={{ color: "var(--muted)", fontSize: "0.8rem" }}>PM: {p.pm || "—"}</div>}
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontSize: "0.8rem" }}>Completed: {p.endDate || "—"}</div>
@@ -107,6 +120,24 @@ export default function CompletedList({ projects, canEdit }: { projects: Project
                   )}
                 </div>
               </Link>
+              {canEdit && (
+                <select
+                  key={p.pm || ""}
+                  defaultValue={p.pm || ""}
+                  disabled={pending}
+                  onChange={(e) => changePm(p.id, e.target.value)}
+                  aria-label={`Project manager for ${p.name}`}
+                  style={{ border: "1px solid var(--border)", background: "var(--surface)", color: "var(--ink)", borderRadius: 6, padding: "6px 8px", fontSize: "0.78rem", fontFamily: "inherit", flexShrink: 0 }}
+                >
+                  <option value="">PM: none</option>
+                  {p.pm && !pmPool.includes(p.pm) && <option value={p.pm}>PM: {p.pm}</option>}
+                  {pmPool.map((n) => (
+                    <option key={n} value={n}>
+                      PM: {n}
+                    </option>
+                  ))}
+                </select>
+              )}
               {canEdit && (
                 <button
                   disabled={pending}

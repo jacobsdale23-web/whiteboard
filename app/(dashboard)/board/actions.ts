@@ -2,9 +2,9 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { projects } from "@/lib/db/schema";
+import { projectManagers, projects } from "@/lib/db/schema";
 import { QB_NUMBER_RE } from "@/lib/project-numbers";
 import { cleanJobKind } from "@/lib/job-kinds";
 import { assertNotSafety } from "@/lib/auth/current-user";
@@ -93,6 +93,26 @@ export async function saveProject(id: string | null, data: ProjectInput) {
   revalidatePath("/calendar");
   revalidatePath("/completed");
   if (id) revalidatePath(`/projects/${id}`);
+}
+
+// PM-only change, used from the Completed list. A name must be on the PM list (or be the job's current PM); empty clears it.
+export async function setProjectPm(id: string, pm: string | null) {
+  await assertNotSafety();
+  const existing = await db.query.projects.findFirst({ where: eq(projects.id, id) });
+  if (!existing) throw new Error("Project not found.");
+  await assertCompanyAccess(existing.companyId);
+  const name = pm?.trim().slice(0, 60) || null;
+  if (name && name !== existing.pm) {
+    const [row] = await db.select().from(projectManagers).where(and(eq(projectManagers.active, true), sql`lower(${projectManagers.name}) = ${name.toLowerCase()}`));
+    if (!row) throw new Error("Pick a PM from the list.");
+    await db.update(projects).set({ pm: row.name }).where(eq(projects.id, id));
+  } else if (!name) {
+    await db.update(projects).set({ pm: null }).where(eq(projects.id, id));
+  }
+  revalidatePath("/board");
+  revalidatePath("/calendar");
+  revalidatePath("/completed");
+  revalidatePath(`/projects/${id}`);
 }
 
 const PROJECT_STATUSES = ["upcoming", "active", "on_hold", "complete", "billed", "canceled"];
