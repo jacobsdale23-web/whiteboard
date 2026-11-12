@@ -25,7 +25,11 @@ export default async function OpportunitiesPage() {
   const company = await requireCompany();
   const rows = await db.select().from(opportunities).where(eq(opportunities.companyId, company.id));
   const estimators = await getPmPool(); // the same people as the PM list, so a won bid's estimator becomes the job's PM
-  const active = rows.filter((o) => o.bidStatus !== "Lost" && o.bidStatus !== "Abandoned").sort(byBidDueDate);
+  // The page is the to-do list: only bids still being worked. A won bid has moved to the board as an upcoming job
+  // (its estimate follows it there, under Original Bid), so it is tucked away below with the lost and abandoned ones.
+  const closed = (o: OpportunityRow) => o.bidStatus === "Won" || o.bidStatus === "Lost" || o.bidStatus === "Abandoned";
+  const active = rows.filter((o) => !closed(o)).sort(byBidDueDate);
+  const won = rows.filter((o) => o.bidStatus === "Won").sort(byBidDueDate).reverse();
   const archived = rows.filter((o) => o.bidStatus === "Lost" || o.bidStatus === "Abandoned").sort(byBidDueDate);
 
   return (
@@ -40,9 +44,22 @@ export default async function OpportunitiesPage() {
           <OpportunityCard key={o.id} o={o} estimators={estimators} />
         ))}
         {!active.length && (
-          <p style={{ color: "var(--muted)" }}>No opportunities yet. Add one with &ldquo;+ New Opportunity&rdquo;.</p>
+          <p style={{ color: "var(--muted)" }}>{rows.length ? "Nothing to work on right now." : "No opportunities yet."} Add one with &ldquo;+ New Opportunity&rdquo;.</p>
         )}
       </div>
+
+      {!!won.length && (
+        <details style={{ marginTop: 24 }}>
+          <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: "0.85rem", fontWeight: 600, textTransform: "uppercase" }}>
+            Won, now on the board ({won.length})
+          </summary>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14, marginTop: 14 }}>
+            {won.map((o) => (
+              <OpportunityCard key={o.id} o={o} estimators={estimators} />
+            ))}
+          </div>
+        </details>
+      )}
 
       {!!archived.length && (
         <details style={{ marginTop: 24 }}>
@@ -107,6 +124,11 @@ function OpportunityCard({ o, estimators }: { o: OpportunityRow; estimators: str
       <MetaRow label="Bid Value" value={o.bidValue ? `$${Number(o.bidValue).toLocaleString()}` : "—"} />
       <MetaRow label="Estimator" value={o.estimator || "—"} />
       <MetaRow label="Customer" value={o.customer || "—"} />
+      {o.bidStatus === "Won" && o.convertedProjectId && (
+        <Link href={`/projects/${o.convertedProjectId}`} style={{ fontSize: "0.82rem", textDecoration: "underline" }}>
+          Open the job →
+        </Link>
+      )}
     </div>
   );
 }

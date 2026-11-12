@@ -82,6 +82,7 @@ export async function updateBidStatus(
         companyId: existing.companyId,
         name: existing.jobName,
         location: existing.location,
+        customer: existing.customer?.trim() || null,
         status: "upcoming",
         value: bidValue as never,
         crew: [],

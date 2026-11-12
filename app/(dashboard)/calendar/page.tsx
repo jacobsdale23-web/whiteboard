@@ -18,7 +18,8 @@ export default async function CalendarPage() {
   ]);
 
   const events = allOpportunities
-    .filter((o) => o.bidDueDate && o.bidStatus !== "Lost" && o.bidStatus !== "Abandoned")
+    // A won bid is now a job on the calendar itself, so its bid-due marker comes off.
+    .filter((o) => o.bidDueDate && o.bidStatus !== "Lost" && o.bidStatus !== "Abandoned" && !(o.bidStatus === "Won" && o.convertedProjectId))
     .map((o) => ({
       id: o.id,
       name: o.jobName,
