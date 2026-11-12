@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useActionState, useEffect, useRef } from "react";
 import { saveScheduleRow, type ScheduleFormState } from "./schedule-actions";
@@ -18,6 +18,7 @@ export default function ScheduleForm({
   taskNumbers = [],
   defaultLocation = "",
   defaultStart = "",
+  defaultPerson = "",
   row,
   onDone,
 }: {
@@ -27,6 +28,7 @@ export default function ScheduleForm({
   taskNumbers?: string[];
   defaultLocation?: string;
   defaultStart?: string;
+  defaultPerson?: string;
   row?: EditRow;
   onDone?: () => void;
 }) {
@@ -62,7 +64,7 @@ export default function ScheduleForm({
         </Field>
       )}
       <Field label={row ? "Who" : "Who is going (separate several with commas)"}>
-        <input name="person" required list={listId} defaultValue={row?.person || ""} placeholder="e.g. Benjamin Nelson, Jan Perez" style={inputStyle} />
+        <input name="person" required list={listId} defaultValue={row?.person || defaultPerson} placeholder="e.g. Benjamin Nelson, Jan Perez" style={inputStyle} />
         <datalist id={listId}>
           {names.map((n) => (
             <option key={n} value={n} />

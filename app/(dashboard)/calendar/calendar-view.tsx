@@ -6,12 +6,13 @@ import { computeBar, addDays, barColor, tapTag, type GanttProject, type Bar } fr
 import { JOB_KIND_COLORS, KIND_FILTERS, billingTypeFromOppType, cleanKindFilters, jobKindFromOppType, matchesKindFilters, oppTypeColor, type KindFilter } from "@/lib/job-kinds";
 import { crewFor, crewLine, type SchedRow } from "@/lib/schedule";
 import GanttChart from "./gantt-chart";
+import CrewGrid from "./crew-grid";
 import StatusDialog from "./status-dialog";
 
 // Local YYYY-MM-DD for a calendar day (matches how the schedule stores dates).
 const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-type Mode = "timeline" | "week" | "day";
+type Mode = "timeline" | "week" | "day" | "welders";
 
 const DAY_MS = 86400000;
 function startOfDay(d: Date): Date {
@@ -74,16 +75,13 @@ function useItems(projects: GanttProject[]): Item[] {
 }
 
 const FILTER_KEY = "wb-calendar-job-filter";
-const PM_FILTER_KEY = "wb-calendar-pm-filter";
-const WELDER_FILTER_KEY = "wb-calendar-welder-filter";
-const NO_PM = "__none"; // the "jobs with no PM yet" choice; "" means everyone
+const PM_FILTER_KEY = "wb-calendar-pm-filter";const NO_PM = "__none"; // the "jobs with no PM yet" choice; "" means everyone
 
 export default function CalendarView({ projects: allProjects, events: allEvents, readOnly, pmPool, crew, names }: { projects: GanttProject[]; events: CalendarEvent[]; readOnly: boolean; pmPool: string[]; crew: SchedRow[]; names: string[] }) {
   const [mode, setMode] = useState<Mode>("timeline");
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
   const [filter, setFilter] = useState<KindFilter[]>([]); // empty = every job; otherwise a job shows if it fits any picked filter
   const [pmFilter, setPmFilter] = useState("");
-  const [welderFilter, setWelderFilter] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Remember the last filters on this device (best effort: storage can be unavailable).
@@ -91,15 +89,8 @@ export default function CalendarView({ projects: allProjects, events: allEvents,
     try {
       setFilter(cleanKindFilters(localStorage.getItem(FILTER_KEY)));
       setPmFilter(localStorage.getItem(PM_FILTER_KEY) || "");
-      setWelderFilter(localStorage.getItem(WELDER_FILTER_KEY) || "");
     } catch {}
   }, []);
-  function pickWelder(v: string) {
-    setWelderFilter(v);
-    try {
-      localStorage.setItem(WELDER_FILTER_KEY, v);
-    } catch {}
-  }
   // Click a filter to add it, click it again to take it off; "All jobs" clears them.
   function toggleFilter(f: KindFilter | null) {
     const next = f === null ? [] : filter.includes(f) ? filter.filter((x) => x !== f) : [...filter, f];
@@ -125,39 +116,25 @@ export default function CalendarView({ projects: allProjects, events: allEvents,
   }, [pmPool, allProjects, allEvents, pmFilter]);
   const pmMatches = (name: string | null | undefined) => (pmFilter === "" ? true : pmFilter === NO_PM ? !name : name === pmFilter);
 
-  // Welders / crew: everyone scheduled on a job, plus anyone on a job's crew list. Picking one shows only the jobs they are on.
-  const welderOptions = useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const r of crew) seen.set(r.person.toLowerCase(), r.person);
-    for (const p of allProjects) for (const n of p.crew || []) if (n.trim()) seen.set(n.trim().toLowerCase(), n.trim());
-    if (welderFilter) seen.set(welderFilter.toLowerCase(), welderFilter); // a remembered choice always has its own option
-    return [...seen.values()].sort((a, b) => a.localeCompare(b));
-  }, [crew, allProjects, welderFilter]);
-  const welderProjectIds = useMemo(() => {
-    const w = welderFilter.toLowerCase();
-    const ids = new Set<string>();
-    if (!w) return ids;
-    for (const r of crew) if (r.person.toLowerCase() === w) ids.add(r.projectId);
-    for (const p of allProjects) if ((p.crew || []).some((n) => n.trim().toLowerCase() === w)) ids.add(p.id);
-    return ids;
-  }, [welderFilter, crew, allProjects]);
-
-  // Bids and meetings go by their estimator, who becomes the job's PM when the bid is won. They have no crew, so a welder pick hides them.
-  const projects = useMemo(() => allProjects.filter((p) => matchesKindFilters(filter, p) && pmMatches(p.pm) && (!welderFilter || welderProjectIds.has(p.id))), [allProjects, filter, pmFilter, welderFilter, welderProjectIds]); // eslint-disable-line react-hooks/exhaustive-deps
-  const events = useMemo(() => (welderFilter ? [] : allEvents.filter((e) => matchesKindFilters(filter, { jobKind: jobKindFromOppType(e.oppType), billingType: billingTypeFromOppType(e.oppType) }) && pmMatches(e.estimator))), [allEvents, filter, pmFilter, welderFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Bids and meetings go by their estimator, who becomes the job's PM when the bid is won.
+  const projects = useMemo(() => allProjects.filter((p) => matchesKindFilters(filter, p) && pmMatches(p.pm)), [allProjects, filter, pmFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  const events = useMemo(() => allEvents.filter((e) => matchesKindFilters(filter, { jobKind: jobKindFromOppType(e.oppType), billingType: billingTypeFromOppType(e.oppType) }) && pmMatches(e.estimator)), [allEvents, filter, pmFilter]); // eslint-disable-line react-hooks/exhaustive-deps
   const items = useItems(projects);
   const selected = selectedId ? allProjects.find((p) => p.id === selectedId) ?? null : null;
-  const filtered = filter.length > 0 || pmFilter !== "" || welderFilter !== "";
-  const filterLabel = [filter.length ? KIND_FILTERS.filter((f) => filter.includes(f.value)).map((f) => f.label).join(" + ") : "", pmFilter === NO_PM ? "No PM" : pmFilter && `PM ${pmFilter}`, welderFilter && `Welder ${welderFilter}`].filter(Boolean).join(" · ");
+  const filtered = filter.length > 0 || pmFilter !== "";
+  const filterLabel = [filter.length ? KIND_FILTERS.filter((f) => filter.includes(f.value)).map((f) => f.label).join(" + ") : "", pmFilter === NO_PM ? "No PM" : pmFilter && `PM ${pmFilter}`].filter(Boolean).join(" · ");
+  // Jobs a new stint can be added to (not finished or canceled), for the Welders view.
+  const jobOptions = useMemo(() => allProjects.filter((p) => !["complete", "billed", "canceled"].includes(p.status)).map((p) => ({ id: p.id, name: p.name })).sort((a, b) => a.name.localeCompare(b.name)), [allProjects]);
 
-  const step = mode === "week" ? 7 : 1;
+  const weekly = mode === "week" || mode === "welders";
+  const step = weekly ? 7 : 1;
   const today = startOfDay(new Date());
 
   return (
     <div>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginBottom: 16 }}>
         <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
-          {(["timeline", "week", "day"] as Mode[]).map((m) => (
+          {(["timeline", "week", "day", "welders"] as Mode[]).map((m) => (
             <button
               key={m}
               onClick={() => setMode(m)}
@@ -183,7 +160,7 @@ export default function CalendarView({ projects: allProjects, events: allEvents,
             <NavButton onClick={() => setAnchor(today)}>Today</NavButton>
             <NavButton onClick={() => setAnchor(addDays(anchor, step))}>›</NavButton>
             <strong style={{ marginLeft: 6 }}>
-              {mode === "week"
+              {weekly
                 ? `${fmt(startOfWeek(anchor), { month: "short", day: "numeric" })} – ${fmt(addDays(startOfWeek(anchor), 6), { month: "short", day: "numeric", year: "numeric" })}`
                 : fmt(anchor, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
             </strong>
@@ -242,34 +219,10 @@ export default function CalendarView({ projects: allProjects, events: allEvents,
           ))}
           <option value={NO_PM}>No PM yet</option>
         </select>
-        <span style={{ fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 700, color: "var(--muted)", marginLeft: 12 }}>Welder</span>
-        <select
-          value={welderFilter}
-          onChange={(e) => pickWelder(e.target.value)}
-          aria-label="Filter by welder or crew member"
-          style={{
-            border: `1px solid ${welderFilter ? "var(--rust)" : "var(--border)"}`,
-            background: welderFilter ? "var(--rust)" : "var(--surface)",
-            color: welderFilter ? "var(--rust-ink)" : "var(--ink)",
-            borderRadius: 20,
-            padding: "6px 12px",
-            fontWeight: 600,
-            fontSize: "0.82rem",
-            cursor: "pointer",
-            fontFamily: "inherit",
-          }}
-        >
-          <option value="">All welders</option>
-          {welderOptions.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
       </div>
 
       {mode === "timeline" && filtered && !items.length && !events.length ? (
-        <div style={{ color: "var(--muted)", padding: 20 }}>Nothing on the calendar for “{filterLabel}”. Pick “All jobs”, “All PMs” and “All welders” to see everything.</div>
+        <div style={{ color: "var(--muted)", padding: 20 }}>Nothing on the calendar for “{filterLabel}”. Pick “All jobs” and “All PMs” to see everything.</div>
       ) : null}
       {mode === "timeline" && !(filtered && !items.length && !events.length) && (
         <>
@@ -279,6 +232,18 @@ export default function CalendarView({ projects: allProjects, events: allEvents,
       )}
       {mode === "week" && <WeekView items={items} events={events} crew={crew} weekStart={startOfWeek(anchor)} today={today} onSelect={setSelectedId} />}
       {mode === "day" && <DayView items={items} events={events} crew={crew} day={anchor} onSelect={setSelectedId} />}
+      {mode === "welders" && (
+        <CrewGrid
+          crew={crew.filter((r) => projects.some((p) => p.id === r.projectId))}
+          projectNames={Object.fromEntries(allProjects.map((p) => [p.id, p.name]))}
+          jobOptions={jobOptions.filter((j) => projects.some((p) => p.id === j.id))}
+          names={names}
+          weekStart={startOfWeek(anchor)}
+          today={today}
+          readOnly={readOnly}
+          onSelect={setSelectedId}
+        />
+      )}
       {selected && <StatusDialog project={selected} readOnly={readOnly} crew={crew} names={names} projectNames={Object.fromEntries(allProjects.map((p) => [p.id, p.name]))} todayIso={isoOf(today)} onClose={() => setSelectedId(null)} />}
     </div>
   );
