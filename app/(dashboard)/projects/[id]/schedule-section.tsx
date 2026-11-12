@@ -83,7 +83,7 @@ export default function ScheduleSection({ projectId, rows, names, taskNumbers, d
           </button>
         )}
       </div>
-      <p style={{ color: "var(--muted)", fontSize: "0.8rem", marginBottom: 10 }}>Who is going to this job, which days, and where. The Schedule page shows everyone together.</p>
+      <p style={{ color: "var(--muted)", fontSize: "0.8rem", marginBottom: 10 }}>Who is going to this job, which days, and where. Hover the job on the Calendar to see it.</p>
       {adding && (
         <div style={{ marginBottom: 10 }}>
           <ScheduleForm projectId={projectId} names={names} taskNumbers={taskNumbers} defaultLocation={defaultLocation} onDone={() => setAdding(false)} />
