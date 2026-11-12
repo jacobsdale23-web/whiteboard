@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { JOB_KIND_COLORS, JOB_KIND_LABELS, cleanJobKind } from "@/lib/job-kinds";
 import { db } from "@/lib/db";
-import { projects, milestones, dailyLogs, lineItems, expenses, invoices, payApps, sovItems, sovEntries, billingRates, billingTasks, tmInvoices, jsaForms, leakNumbers, receipts, omReports, projectQuotes } from "@/lib/db/schema";
+import { findConflicts, rangeLabel, type SchedRow } from "@/lib/schedule";
+import ScheduleSection from "./schedule-section";
+import { crewSchedule, projects, milestones, dailyLogs, lineItems, expenses, invoices, payApps, sovItems, sovEntries, billingRates, billingTasks, tmInvoices, jsaForms, leakNumbers, receipts, omReports, projectQuotes } from "@/lib/db/schema";
 import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
 import { canAccessCompany, getWorkspace, switchCompanyUrl } from "@/lib/auth/company";
 import MilestoneSection from "./milestone-section";
@@ -78,6 +80,35 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     // The quote a small job is billed from. Foremen only learn that one exists (so they can flag a change); prices stay admin-only.
     isTm ? Promise.resolve([] as typeof projectQuotes.$inferSelect[]) : db.select().from(projectQuotes).where(eq(projectQuotes.projectId, id)),
   ]);
+
+  // Who is scheduled to this job, and whether any of them is also booked on a different job the same days.
+  const scheduleRows = await db.select().from(crewSchedule).where(eq(crewSchedule.projectId, id));
+  const asSched = (r: typeof crewSchedule.$inferSelect): SchedRow => ({ id: r.id, projectId: r.projectId, person: r.person, startDate: r.startDate, endDate: r.endDate, location: r.location, taskNumber: r.taskNumber, note: r.note });
+  const otherRows = scheduleRows.length
+    ? await db.select().from(crewSchedule).where(and(eq(crewSchedule.companyId, project.companyId), ne(crewSchedule.projectId, id), inArray(crewSchedule.person, [...new Set(scheduleRows.map((r) => r.person))])))
+    : [];
+  const otherJobs = otherRows.length ? await db.select({ id: projects.id, name: projects.name }).from(projects).where(inArray(projects.id, [...new Set(otherRows.map((r) => r.projectId))])) : [];
+  const otherJobName = new Map(otherJobs.map((j) => [j.id, j.name]));
+  const clashes = findConflicts([...scheduleRows.map(asSched), ...otherRows.map(asSched)]);
+  const todayChicago = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+  const scheduleView = scheduleRows
+    .slice()
+    .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.person.localeCompare(b.person))
+    .map((r) => {
+      const hits = (clashes.get(r.id) || []).filter((o) => o.projectId !== id);
+      return {
+        id: r.id,
+        person: r.person,
+        startDate: r.startDate,
+        endDate: r.endDate,
+        range: rangeLabel(r),
+        location: r.location,
+        taskNumber: r.taskNumber,
+        note: r.note,
+        clash: hits.length ? `Also scheduled on ${hits.map((o) => `${otherJobName.get(o.projectId) || "another job"} (${rangeLabel(o)})`).join("; ")}` : null,
+        past: r.endDate < todayChicago,
+      };
+    });
 
   // Unit-price jobs with a line-item list: the daily log records what was installed per line item.
   const production = !isTm && projectLineItems.length > 0;
@@ -324,6 +355,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           />
         </div>
       )}
+
+      <div style={{ marginBottom: 20 }}>
+        <ScheduleSection projectId={id} rows={scheduleView} names={people.names} taskNumbers={projectTaskNumbers.map((t) => t.taskNumber).sort()} defaultLocation={project.location || ""} readOnly={readOnly} />
+      </div>
 
       <div style={{ marginBottom: 20 }}>
         <MilestoneSection projectId={id} milestones={projectMilestones} readOnly={readOnly} />

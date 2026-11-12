@@ -205,7 +205,7 @@ function LogForm({
             noneLabel="— None —"
             noneValue=""
             newPlaceholder="New task number, e.g. 070.58526"
-            initial={initial?.taskNumber || undefined}
+            initial={initial ? initial.taskNumber || undefined : taskNumbers.length === 1 ? taskNumbers[0] : undefined}
           />
         </Field>
         <Field label="Locusview Number">

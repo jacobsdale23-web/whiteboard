@@ -197,6 +197,22 @@ export const jsaForms = pgTable("jsa_forms", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Who is working where, and when: one row = one person on one job for a run of days (a single day has the same start and
+// end), with the location and task/PO for that stint. Powers the Schedule page and each job's Schedule section, so one
+// standing T&M job can have different welders at different locations on different days.
+export const crewSchedule = pgTable("crew_schedule", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id").notNull(),
+  projectId: text("project_id").notNull(),
+  person: text("person").notNull(),
+  startDate: text("start_date").notNull(), // YYYY-MM-DD
+  endDate: text("end_date").notNull(), // YYYY-MM-DD, same as start for one day
+  location: text("location"),
+  taskNumber: text("task_number"),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // ---------- T&M billing (admin-only) ----------
 
 // $/hr by crew position, per project — negotiated rates differ by contract.
