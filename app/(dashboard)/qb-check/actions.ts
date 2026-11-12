@@ -8,7 +8,7 @@ import { projects } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
 import { requireCompany } from "@/lib/auth/company";
 import { getConnection, qbConfig, QbError } from "@/lib/quickbooks";
-import { createQbJob, findParentCustomer, listQbJobs } from "@/lib/qb-jobs";
+import { createQbJob, listQbJobs, resolveParentCustomer } from "@/lib/qb-jobs";
 import { nextProjectNumber, qbSafeName } from "@/lib/qb-compare";
 
 export type CheckResult = { error?: string; message?: string };
@@ -65,7 +65,7 @@ export async function createJobInQuickBooks(projectId: string): Promise<CheckRes
     const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.companyId, companyId)));
     if (!project) return { error: "That project no longer exists." };
     if (project.jobKind === "fwi_hot_tap") return { error: "An FWI hot tap is billed through its parent job and gets no number of its own." };
-    if (!project.customer?.trim()) return { error: "Give the project a customer first (it must match the customer's name in QuickBooks exactly)." };
+    if (!project.customer?.trim()) return { error: "Give the project a customer first. If QuickBooks doesn't have that customer yet, it is created for you." };
 
     const qbJobs = await listQbJobs(companyId);
     const yy = yearPrefix();
@@ -77,17 +77,27 @@ export async function createJobInQuickBooks(projectId: string): Promise<CheckRes
       number = nextProjectNumber(yy, qbJobs.map((j) => j.number), wbNumbers);
     }
 
-    const parent = await findParentCustomer(companyId, project.customer.trim());
+    // The customer comes from the White Board project. If QuickBooks doesn't have it, it is created (name only).
+    const parent = await resolveParentCustomer(companyId, project.customer.trim());
     if (typeof parent === "string") return { error: parent };
+    const customerNote = parent.created
+      ? ` Also created the customer "${parent.DisplayName}" in QuickBooks (name only).${parent.near.length ? ` Similar customers already there: ${parent.near.join("; ")} — if one is the same company, merge them in QuickBooks.` : ""}`
+      : "";
 
     const displayName = `${number} - ${qbSafeName(project.name)}`;
-    const created = await createQbJob(companyId, displayName, parent.Id);
+    let created;
+    try {
+      created = await createQbJob(companyId, displayName, parent.Id);
+    } catch (e) {
+      const why = e instanceof Error ? e.message : "unknown error";
+      return { error: `${why}${parent.created ? ` (The customer "${parent.DisplayName}" was created in QuickBooks before this failed, so trying again will reuse it.)` : ""}` };
+    }
     // Only after QuickBooks confirms does the number go on the White Board job.
     await db.update(projects).set({ projectNumber: number }).where(eq(projects.id, projectId));
     refresh();
     revalidatePath(`/projects/${projectId}`);
     const kind = created.isProject === true ? "QuickBooks lists it as a Project" : created.isProject === false ? "QuickBooks lists it as a sub-customer, NOT a Project — check the Projects page" : "check the Projects page to see whether it appears there";
-    return { message: `Created "${displayName}" in QuickBooks under ${parent.DisplayName} and set ${number} on this job. ${kind}.` };
+    return { message: `Created "${displayName}" in QuickBooks under ${parent.DisplayName} and set ${number} on this job. ${kind}.${customerNote}` };
   } catch (e) {
     if (e instanceof QbError) return { error: e.message };
     return { error: e instanceof Error ? e.message : "Couldn't create that job in QuickBooks." };

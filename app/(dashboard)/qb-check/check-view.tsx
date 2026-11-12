@@ -92,7 +92,7 @@ function CreateButton({ id, next, confirming, setConfirming, pending, onGo, name
   }
   return (
     <div style={{ flexBasis: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", fontSize: "0.84rem" }}>
-      Create <strong>{next} - {name}</strong> in QuickBooks under <strong>{customer || "(no customer)"}</strong>? This is a real change in your books. Afterwards, check that it shows on QuickBooks&apos; Projects page.
+      Create <strong>{next} - {name}</strong> in QuickBooks under <strong>{customer || "(no customer)"}</strong>? If QuickBooks doesn&apos;t have that customer yet, it will be created too (name only). This is a real change in your books. Afterwards, check that it shows on QuickBooks&apos; Projects page.
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
         <button disabled={pending} onClick={onGo} style={{ ...btnStyle, background: "var(--rust)", color: "var(--rust-ink)" }}>
           {pending ? "Creating…" : "Yes, create it"}

@@ -1,5 +1,6 @@
-import { qbApi, qbQuery, qbQuote } from "@/lib/quickbooks";
+import { qbApi, qbQuery } from "@/lib/quickbooks";
 import { parseJobName, type QbJobLite } from "@/lib/qb-compare";
+import { matchCustomers, qbCustomerName } from "@/lib/qb-customer-match";
 
 type QbCustomerFull = {
   Id: string;
@@ -25,15 +26,37 @@ export async function listQbJobs(companyId: string): Promise<QbJobLite[]> {
   return out;
 }
 
-// The customer a new job goes under. Matched by exact name only; a string result is the reason it couldn't be found.
-export async function findParentCustomer(companyId: string, name: string): Promise<{ Id: string; DisplayName: string } | string> {
-  const exact = await qbQuery<QbCustomerFull>(companyId, `select Id, DisplayName, Job from Customer where DisplayName = '${qbQuote(name)}'`, "Customer");
-  const tops = exact.filter((c) => !c.Job);
-  if (tops.length === 1) return tops[0];
-  if (tops.length > 1) return `QuickBooks has more than one customer named "${name}".`;
-  const close = await qbQuery<QbCustomerFull>(companyId, `select DisplayName, Job from Customer where DisplayName like '%${qbQuote(name.slice(0, 20))}%' maxresults 8`, "Customer");
-  const names = close.filter((c) => !c.Job).map((c) => c.DisplayName);
-  return `QuickBooks has no customer named "${name}".${names.length ? ` Close matches: ${names.join("; ")}.` : ""} Make the project's customer match exactly, or create the customer in QuickBooks first.`;
+// Every top-level customer in QuickBooks (not jobs), active or not.
+async function listTopCustomers(companyId: string): Promise<QbCustomerFull[]> {
+  const out: QbCustomerFull[] = [];
+  for (let start = 1; start < 5000; start += 500) {
+    const page = await qbQuery<QbCustomerFull>(companyId, `select Id, DisplayName, Active, Job from Customer where Job = false and Active in (true, false) startposition ${start} maxresults 500`, "Customer");
+    out.push(...page);
+    if (page.length < 500) break;
+  }
+  return out;
+}
+
+// The customer a new job goes under. The White Board customer name is used as given: a QuickBooks customer with the same name
+// (ignoring case, punctuation, word order and Inc/LLC) is used, and when there is none the customer is created with just a name
+// (no email, phone or address). `near` lists similar customers that were NOT used, so a possible duplicate can be merged by hand.
+// A string result is the reason it couldn't be done.
+export async function resolveParentCustomer(companyId: string, wanted: string): Promise<{ Id: string; DisplayName: string; created: boolean; near: string[] } | string> {
+  const name = qbCustomerName(wanted);
+  if (!name) return "The project has no customer name.";
+  const tops = await listTopCustomers(companyId);
+  const { exact, near } = matchCustomers(name, tops.map((c) => c.DisplayName));
+  if (exact.length) {
+    const hits = tops.filter((c) => exact.includes(c.DisplayName));
+    const verbatim = hits.filter((c) => c.DisplayName.toLowerCase() === name.toLowerCase());
+    const pick = verbatim.length === 1 ? verbatim[0] : hits.length === 1 ? hits[0] : null;
+    if (!pick) return `QuickBooks has more than one customer that looks like "${name}" (${hits.map((h) => h.DisplayName).join("; ")}). Set the project's customer to the exact one you want.`;
+    if (pick.Active === false) return `The QuickBooks customer "${pick.DisplayName}" is inactive. Make it active in QuickBooks (or change the project's customer), then try again.`;
+    return { Id: pick.Id, DisplayName: pick.DisplayName, created: false, near: [] };
+  }
+  const created = await qbApi<{ Customer?: QbCustomerFull }>(companyId, "POST", "/customer", { DisplayName: name });
+  if (!created.Customer?.Id) throw new Error("QuickBooks didn't confirm the new customer.");
+  return { Id: created.Customer.Id, DisplayName: created.Customer.DisplayName || name, created: true, near: near.filter((n) => tops.find((c) => c.DisplayName === n)?.Active !== false) };
 }
 
 // Creates the job under its customer. Returns the new record plus whether QuickBooks treats it as a Project.
