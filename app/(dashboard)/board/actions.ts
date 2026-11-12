@@ -139,6 +139,25 @@ export async function setProjectStatus(id: string, status: string) {
   revalidatePath(`/projects/${id}`);
 }
 
+// The job's date range, changed from the calendar. Either date can be cleared (a job with no end date uses its duration).
+export async function setProjectDates(id: string, startDate: string | null, endDate: string | null) {
+  await assertNotSafety();
+  const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
+  const start = startDate?.trim() || null;
+  const end = endDate?.trim() || null;
+  if ((start && !isDate(start)) || (end && !isDate(end))) throw new Error("Enter valid dates.");
+  if (start && end && end < start) throw new Error("The end date is before the start date.");
+  const existing = await db.query.projects.findFirst({ where: eq(projects.id, id) });
+  if (!existing) throw new Error("Project not found.");
+  await assertCompanyAccess(existing.companyId);
+  await db.update(projects).set({ startDate: start, endDate: end }).where(eq(projects.id, id));
+
+  revalidatePath("/board");
+  revalidatePath("/calendar");
+  revalidatePath("/completed");
+  revalidatePath(`/projects/${id}`);
+}
+
 // "complete" jobs stay on the calendar (grey) until they are billed; "billed"
 // jobs drop off the calendar and live only in the Completed list.
 export async function setProjectBilled(id: string, billed: boolean) {

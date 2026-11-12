@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { setProjectStatus } from "../board/actions";
+import { setProjectDates, setProjectStatus } from "../board/actions";
 import type { GanttProject } from "@/lib/gantt";
 import { findConflicts, rangeLabel, type SchedRow } from "@/lib/schedule";
 import ScheduleSection from "../projects/[id]/schedule-section";
@@ -29,6 +29,23 @@ export default function StatusDialog({ project, readOnly, crew, names, projectNa
       return { ...r, range: rangeLabel(r), past: r.endDate < todayIso, clash: hits.length ? `Also scheduled on ${hits.map((o) => `${projectNames[o.projectId] || "another job"} (${rangeLabel(o)})`).join("; ")}` : null };
     });
   const [error, setError] = useState("");
+  const [start, setStart] = useState(project.startDate || "");
+  const [end, setEnd] = useState(project.endDate || "");
+  const [datesSaved, setDatesSaved] = useState(false);
+  const datesChanged = start !== (project.startDate || "") || end !== (project.endDate || "");
+
+  function saveDates() {
+    setError("");
+    setDatesSaved(false);
+    startTransition(async () => {
+      try {
+        await setProjectDates(project.id, start || null, end || null);
+        setDatesSaved(true);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Couldn't change the dates.");
+      }
+    });
+  }
 
   function changeStatus(status: string) {
     if (status === project.status) return;
@@ -101,6 +118,29 @@ export default function StatusDialog({ project, readOnly, crew, names, projectNa
             </div>
           </>
         )}
+        {!readOnly && (
+          <>
+            <div style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", margin: "16px 0 8px" }}>Dates</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.72rem", color: "var(--muted)" }}>
+                Start
+                <input type="date" value={start} onChange={(e) => { setStart(e.target.value); setDatesSaved(false); }} style={dateInput} />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.72rem", color: "var(--muted)" }}>
+                Finish
+                <input type="date" value={end} onChange={(e) => { setEnd(e.target.value); setDatesSaved(false); }} style={dateInput} />
+              </label>
+              <button
+                disabled={pending || !datesChanged}
+                onClick={saveDates}
+                style={{ background: datesChanged ? "var(--rust)" : "var(--surface-2)", color: datesChanged ? "var(--rust-ink)" : "var(--muted)", border: "none", borderRadius: 6, padding: "9px 14px", fontWeight: 600, fontSize: "0.82rem", cursor: datesChanged && !pending ? "pointer" : "default" }}
+              >
+                {pending ? "Saving…" : "Save dates"}
+              </button>
+              {datesSaved && !datesChanged && <span style={{ color: "var(--active)", fontSize: "0.82rem", fontWeight: 600 }}>Saved</span>}
+            </div>
+          </>
+        )}
         {error && <div style={{ color: "var(--danger)", fontSize: "0.82rem", marginTop: 10 }}>{error}</div>}
         <div style={{ marginTop: 16 }}>
           <ScheduleSection projectId={project.id} rows={sectionRows} names={names} taskNumbers={[]} defaultLocation={project.location || ""} readOnly={readOnly} />
@@ -114,3 +154,5 @@ export default function StatusDialog({ project, readOnly, crew, names, projectNa
     </div>
   );
 }
+
+const dateInput: React.CSSProperties = { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", fontSize: "0.9rem", color: "var(--ink)", fontFamily: "inherit" };
