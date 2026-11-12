@@ -9,7 +9,8 @@ import { buildOmReportPdf, type OmPdfPhoto } from "@/lib/om-report-pdf";
 // One O&M field report as a PDF in the familiar O&M layout (?id=reportId). Anyone who can open the project can
 // print it: it has no costs or rates, just what was found and done.
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await getSessionAndProfile())) return new Response("Please sign in.", { status: 401 });
+  const viewer = await getSessionAndProfile();
+  if (!viewer) return new Response("Please sign in.", { status: 401 });
 
   const { id } = await params;
   const project = await db.query.projects.findFirst({ where: eq(projects.id, id) });
@@ -35,7 +36,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const pdf = await buildOmReportPdf(
     { name: project.name, projectNumber: project.projectNumber, companyName: company?.name ?? "" },
     { date: report.date, jobType: report.jobType, extras: report.extras || [], data: report.data || {}, technician: report.technician, signature: report.signature },
-    photos
+    photos,
+    // The office (admins) print every module of the template, blank or not, for pipeline safety.
+    { full: viewer.profile.role === "admin" }
   );
 
   const safe = String(report.data?.address || project.name).replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "").slice(0, 40) || "report";

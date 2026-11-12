@@ -255,6 +255,30 @@ export function sectionsFor(jobTypeId: string, extras: string[], data: OmData): 
   return SECTION_ORDER.filter((id) => included.has(id)).map((id) => OM_SECTIONS[id]);
 }
 
+// Every module of the original O&M report template, in order. The office print (pipeline safety copy) includes all of them
+// whether or not the technician filled them in; the job survey is its own kind of job, not part of that template.
+export const printSectionsFor = (jobTypeId: string): OmSection[] =>
+  jobTypeId === "survey" ? [OM_SECTIONS.survey] : SECTION_ORDER.filter((id) => id !== "survey").map((id) => OM_SECTIONS[id]);
+
+// How one field reads on that full print: answers as text; choices and checklists with every option shown and the
+// picked ones marked, so a blank module still looks like the paper form.
+export function printOmValue(f: OmField, v: OmValue | undefined): string {
+  if (f.type === "choice" || f.type === "yesno") {
+    const options = f.type === "yesno" ? YESNO : f.options!;
+    return options.map((o) => `${v === o ? "[X]" : "[ ]"} ${o}`).join("    ");
+  }
+  if (f.type === "checks") {
+    const picked = Array.isArray(v) ? (v as string[]) : [];
+    return f.options!.map((o) => `${picked.includes(o) ? "[X]" : "[ ]"} ${o}`).join("\n");
+  }
+  if (f.type === "rows") {
+    const lines = formatOmValue(f, v).split("\n").filter(Boolean);
+    while (lines.length < 4) lines.push(" ");
+    return lines.join("\n");
+  }
+  return formatOmValue(f, v);
+}
+
 export function fieldVisible(f: OmField, data: OmData): boolean {
   return !f.showIf || data[f.showIf.key] === f.showIf.equals;
 }

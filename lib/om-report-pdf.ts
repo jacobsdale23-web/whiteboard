@@ -1,7 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import { addPageNumbers, clean, MARGIN, PAGE_H, PAGE_W } from "@/lib/pdf-writer";
 import { OM_LOGO_PNG_BASE64 } from "@/lib/om-logo";
-import { OM_HEADER_FIELDS, OM_NARRATIVE, fieldVisible, formatOmDate, formatOmValue, omJobType, omNarrative, sectionsFor, type OmData, type OmField } from "@/lib/om-report";
+import { OM_HEADER_FIELDS, OM_NARRATIVE, fieldVisible, formatOmDate, formatOmValue, omJobType, omNarrative, printOmValue, printSectionsFor, sectionsFor, type OmData, type OmField } from "@/lib/om-report";
 
 export type OmPdfReport = {
   date: string;
@@ -86,11 +86,14 @@ class Sheet {
     this.y -= h;
   }
   // The answered fields of a section: wide or multi-line ones get a line to themselves, short ones share a line.
-  fields(fs: OmField[], data: OmData) {
-    const filled = fs.map((f) => ({ f, v: formatOmValue(f, data[f.key]) })).filter((x) => x.v);
+  // With `full` (the office print) every field prints, blank or not, like the paper form; otherwise only answered ones.
+  fields(fs: OmField[], data: OmData, full = false) {
+    const cells = full
+      ? fs.map((f) => ({ f, v: printOmValue(f, data[f.key]) })).filter((x) => !(x.f.officeOnly && !formatOmValue(x.f, data[x.f.key])))
+      : fs.map((f) => ({ f, v: formatOmValue(f, data[f.key]) })).filter((x) => x.v);
     let pending: Cell | null = null;
-    for (const { f, v } of filled) {
-      const alone = f.wide || f.type === "checks" || f.type === "rows" || f.type === "textarea";
+    for (const { f, v } of cells) {
+      const alone = f.wide || f.type === "checks" || f.type === "rows" || f.type === "textarea" || (f.type === "choice" && (f.options?.length ?? 0) > 3);
       if (alone) {
         if (pending) {
           this.row([pending]);
@@ -114,7 +117,10 @@ class Sheet {
   }
 }
 
-export async function buildOmReportPdf(project: OmPdfProject, report: OmPdfReport, photos: OmPdfPhoto[]): Promise<Uint8Array> {
+// `full` is the office print for pipeline safety: every module of the O&M template appears, filled in or not. Without it
+// (a technician's own copy) only the sections the job used are printed.
+export async function buildOmReportPdf(project: OmPdfProject, report: OmPdfReport, photos: OmPdfPhoto[], opts: { full?: boolean } = {}): Promise<Uint8Array> {
+  const full = !!opts.full;
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -139,15 +145,24 @@ export async function buildOmReportPdf(project: OmPdfProject, report: OmPdfRepor
     { label: "Date Performed:", value: formatOmDate(report.date) },
     { label: "Area:", value: String(report.data.area || "") },
   ]);
-  s.fields(OM_HEADER_FIELDS.filter((f) => f.key !== "area"), report.data);
+  s.fields(OM_HEADER_FIELDS.filter((f) => f.key !== "area"), report.data, full);
 
-  // Only the sections this job used
-  for (const sec of sectionsFor(report.jobType, report.extras, report.data)) {
-    const fs = sec.fields.filter((f) => fieldVisible(f, report.data));
-    if (!fs.some((f) => formatOmValue(f, report.data[f.key]))) continue;
-    s.y -= 6;
-    s.bar(sec.title);
-    s.fields(fs, report.data);
+  if (full) {
+    // Office print: every module, every field, blank or not.
+    for (const sec of printSectionsFor(report.jobType)) {
+      s.y -= 6;
+      s.bar(sec.title);
+      s.fields(sec.fields, report.data, true);
+    }
+  } else {
+    // A technician's copy: only the sections this job used
+    for (const sec of sectionsFor(report.jobType, report.extras, report.data)) {
+      const fs = sec.fields.filter((f) => fieldVisible(f, report.data));
+      if (!fs.some((f) => formatOmValue(f, report.data[f.key]))) continue;
+      s.y -= 6;
+      s.bar(sec.title);
+      s.fields(fs, report.data);
+    }
   }
 
   // Repair jobs print the original wording; a job with its own notes box (the site survey) uses that title.
