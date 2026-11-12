@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { setProjectStatus } from "../board/actions";
 import type { GanttProject } from "@/lib/gantt";
+import { findConflicts, rangeLabel, type SchedRow } from "@/lib/schedule";
+import ScheduleSection from "../projects/[id]/schedule-section";
 
 const STATUS_CHOICES = [
   { value: "upcoming", label: "Upcoming", hint: "Not started yet" },
@@ -15,8 +17,17 @@ const STATUS_CHOICES = [
 ];
 
 // Opened by clicking a job on the timeline, week or day view.
-export default function StatusDialog({ project, readOnly, onClose }: { project: GanttProject; readOnly: boolean; onClose: () => void }) {
+export default function StatusDialog({ project, readOnly, crew, names, projectNames, todayIso, onClose }: { project: GanttProject; readOnly: boolean; crew: SchedRow[]; names: string[]; projectNames: Record<string, string>; todayIso: string; onClose: () => void }) {
   const [pending, startTransition] = useTransition();
+  // Who is scheduled on this job, with a warning on anyone also booked on a different job the same days.
+  const clashes = findConflicts(crew);
+  const sectionRows = crew
+    .filter((r) => r.projectId === project.id)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.person.localeCompare(b.person))
+    .map((r) => {
+      const hits = (clashes.get(r.id) || []).filter((o) => o.projectId !== project.id);
+      return { ...r, range: rangeLabel(r), past: r.endDate < todayIso, clash: hits.length ? `Also scheduled on ${hits.map((o) => `${projectNames[o.projectId] || "another job"} (${rangeLabel(o)})`).join("; ")}` : null };
+    });
   const [error, setError] = useState("");
 
   function changeStatus(status: string) {
@@ -39,7 +50,7 @@ export default function StatusDialog({ project, readOnly, onClose }: { project: 
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 22px", width: "100%", maxWidth: 420, boxShadow: "0 16px 48px rgba(0,0,0,0.35)" }}
+        style={{ background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 22px", width: "100%", maxWidth: 520, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 16px 48px rgba(0,0,0,0.35)" }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
           <div>
@@ -91,6 +102,9 @@ export default function StatusDialog({ project, readOnly, onClose }: { project: 
           </>
         )}
         {error && <div style={{ color: "var(--danger)", fontSize: "0.82rem", marginTop: 10 }}>{error}</div>}
+        <div style={{ marginTop: 16 }}>
+          <ScheduleSection projectId={project.id} rows={sectionRows} names={names} taskNumbers={[]} defaultLocation={project.location || ""} readOnly={readOnly} />
+        </div>
         <div style={{ marginTop: 14 }}>
           <Link href={`/projects/${project.id}`} style={{ fontSize: "0.85rem", color: "var(--ink-soft)", textDecoration: "underline" }}>
             Open project →

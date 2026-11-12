@@ -72,9 +72,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <Link href="/calendar" style={navLinkStyle}>
               Calendar
             </Link>
-            <Link href="/schedule" style={navLinkStyle}>
-              Schedule
-            </Link>
             {!safetyOnly && (
               <Link href="/opportunities" style={navLinkStyle}>
                 Opportunities

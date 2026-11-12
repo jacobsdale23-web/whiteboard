@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import ScheduleForm from "../../schedule/schedule-form";
-import { deleteScheduleRow } from "../../schedule/actions";
+import ScheduleForm from "../../calendar/schedule-form";
+import { deleteScheduleRow } from "../../calendar/schedule-actions";
 
 export type SectionRow = { id: string; person: string; startDate: string; endDate: string; range: string; location: string | null; taskNumber: string | null; note: string | null; clash: string | null; past: boolean };
 

@@ -51,7 +51,7 @@ export async function saveScheduleRow(_prev: ScheduleFormState, formData: FormDa
     await db.insert(crewSchedule).values(rows.map((r) => ({ id: randomUUID(), companyId: project.companyId, projectId, ...r })));
   }
 
-  revalidatePath("/schedule");
+  revalidatePath("/calendar");
   revalidatePath(`/projects/${projectId}`);
   return { saved: rows.length };
 }
@@ -62,7 +62,7 @@ export async function deleteScheduleRow(id: string): Promise<{ error?: string }>
   if (!existing) return {};
   await assertCompanyAccess(existing.companyId);
   await db.delete(crewSchedule).where(eq(crewSchedule.id, id));
-  revalidatePath("/schedule");
+  revalidatePath("/calendar");
   revalidatePath(`/projects/${existing.projectId}`);
   return {};
 }

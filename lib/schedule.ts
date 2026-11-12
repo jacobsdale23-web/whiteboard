@@ -79,3 +79,13 @@ export function shortDate(iso: string): string {
 }
 
 export const rangeLabel = (r: { startDate: string; endDate: string }) => (r.startDate === r.endDate ? shortDate(r.startDate) : `${shortDate(r.startDate)} to ${shortDate(r.endDate)}`);
+
+// The people scheduled on one job from `fromIso` onward (and, if given, starting on or before `toIso`), soonest first.
+export function crewFor(rows: SchedRow[], projectId: string, fromIso: string, toIso?: string): SchedRow[] {
+  return rows
+    .filter((r) => r.projectId === projectId && r.endDate >= fromIso && (!toIso || r.startDate <= toIso))
+    .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.person.localeCompare(b.person));
+}
+
+// One line per stint, for a hover or tooltip: "Benjamin Nelson · 11/9/26 to 11/13/26 · Cleveland, MS".
+export const crewLine = (r: SchedRow) => [r.person, rangeLabel(r), r.location].filter(Boolean).join(" · ");

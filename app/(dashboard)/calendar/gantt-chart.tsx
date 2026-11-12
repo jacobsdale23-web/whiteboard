@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { computeBar, addDays, startOfMonth, barColor, tapTag, type GanttProject, type Bar } from "@/lib/gantt";
 import { JOB_KIND_COLORS, JOB_KIND_LABELS } from "@/lib/job-kinds";
+import { crewFor, rangeLabel, type SchedRow } from "@/lib/schedule";
 
 const DAY_MS = 86400000;
 const DAY_WIDTH = 7;
@@ -84,7 +85,7 @@ function buildLayout(projects: GanttProject[]): Layout {
   return { rows, months, totalWidth, totalHeight, todayX: xOf(today) };
 }
 
-export default function GanttChart({ projects, onSelect }: { projects: GanttProject[]; onSelect: (id: string) => void }) {
+export default function GanttChart({ projects, crew, todayIso, onSelect }: { projects: GanttProject[]; crew: SchedRow[]; todayIso: string; onSelect: (id: string) => void }) {
   const layout = useMemo(() => buildLayout(projects), [projects]);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; project: GanttProject } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -255,7 +256,7 @@ export default function GanttChart({ projects, onSelect }: { projects: GanttProj
           style={{
             position: "fixed",
             left: Math.min(tooltip.x + 14, (typeof window !== "undefined" ? window.innerWidth : 800) - 260),
-            top: Math.min(tooltip.y + 14, (typeof window !== "undefined" ? window.innerHeight : 600) - 140),
+            top: Math.min(tooltip.y + 14, (typeof window !== "undefined" ? window.innerHeight : 600) - 300),
             zIndex: 50,
             background: "var(--steel)",
             color: "var(--steel-ink)",
@@ -278,10 +279,23 @@ export default function GanttChart({ projects, onSelect }: { projects: GanttProj
               value={tooltip.project.value ? `$${Number(tooltip.project.value).toLocaleString()}` : "—"}
             />
           )}
-          <TooltipRow
-            label="Crew"
-            value={tooltip.project.crew?.length ? tooltip.project.crew.join(", ") : "Unassigned"}
-          />
+          {(() => {
+            const sched = crewFor(crew, tooltip.project.id, todayIso);
+            if (!sched.length) return <TooltipRow label="Crew" value={tooltip.project.crew?.length ? tooltip.project.crew.join(", ") : "Unassigned"} />;
+            return (
+              <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.18)" }}>
+                <div style={{ color: "#a9b0b6", fontSize: "0.68rem", textTransform: "uppercase", marginBottom: 3 }}>Scheduled</div>
+                {sched.slice(0, 8).map((r) => (
+                  <div key={r.id} style={{ padding: "2px 0" }}>
+                    <span style={{ fontWeight: 700 }}>{r.person}</span>
+                    <span style={{ color: "#b7bec4", fontFamily: "var(--font-mono)", fontSize: "0.74rem" }}> · {rangeLabel(r)}</span>
+                    {r.location && <div style={{ color: "#b7bec4", fontSize: "0.74rem" }}>{r.location}</div>}
+                  </div>
+                ))}
+                {sched.length > 8 && <div style={{ color: "#b7bec4", fontSize: "0.74rem" }}>+ {sched.length - 8} more</div>}
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>

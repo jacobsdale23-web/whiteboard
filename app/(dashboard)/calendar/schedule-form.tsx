@@ -1,7 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useActionState, useEffect, useRef } from "react";
-import { saveScheduleRow, type ScheduleFormState } from "./actions";
+import { saveScheduleRow, type ScheduleFormState } from "./schedule-actions";
 
 export type EditRow = { id: string; person: string; startDate: string; endDate: string; location: string | null; taskNumber: string | null; note: string | null };
 
@@ -51,7 +51,7 @@ export default function ScheduleForm({
         <Field label="Job">
           <select name="projectId" required defaultValue="" style={inputStyle}>
             <option value="" disabled>
-              Choose the job…
+              Choose the jobâ€¦
             </option>
             {(projects || []).map((p) => (
               <option key={p.id} value={p.id}>
@@ -101,7 +101,7 @@ export default function ScheduleForm({
           </button>
         )}
         <button type="submit" disabled={pending} style={primaryBtn}>
-          {pending ? "Saving…" : row ? "Save changes" : "Add to schedule"}
+          {pending ? "Savingâ€¦" : row ? "Save changes" : "Add to schedule"}
         </button>
       </div>
     </form>

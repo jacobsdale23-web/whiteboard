@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
-import { opportunities, projects } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { crewSchedule, opportunities, projects } from "@/lib/db/schema";
+import { and, eq, gte } from "drizzle-orm";
+import { addDays } from "@/lib/schedule";
+import { getPeople } from "@/lib/people";
 import { isSafetyViewer } from "@/lib/auth/current-user";
 import { getWorkspace, requireCompany } from "@/lib/auth/company";
 import { getPmPool } from "@/lib/pms";
@@ -11,10 +13,14 @@ export default async function CalendarPage() {
   const company = await requireCompany();
   const readOnly = !!ws && isSafetyViewer(ws.profile);
   const pmPool = await getPmPool();
-  const [allProjects, allOpportunities] = await Promise.all([
+  const todayChicago = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+  const [allProjects, allOpportunities, crewRows, people] = await Promise.all([
     db.select().from(projects).where(eq(projects.companyId, company.id)),
     // Bids and meetings are estimating data; a safety coordinator doesn't see them.
     readOnly ? Promise.resolve([]) : db.select().from(opportunities).where(eq(opportunities.companyId, company.id)),
+    // Who is scheduled where, from a month back on (older stints are history). Shown on hover and edited by clicking a job.
+    db.select().from(crewSchedule).where(and(eq(crewSchedule.companyId, company.id), gte(crewSchedule.endDate, addDays(todayChicago, -30)))),
+    getPeople(company.id),
   ]);
 
   const events = allOpportunities
@@ -38,6 +44,8 @@ export default async function CalendarPage() {
         readOnly={readOnly}
         pmPool={pmPool}
         events={events}
+        names={people.names}
+        crew={crewRows.map((r) => ({ id: r.id, projectId: r.projectId, person: r.person, startDate: r.startDate, endDate: r.endDate, location: r.location, taskNumber: r.taskNumber, note: r.note }))}
         projects={allProjects.map((p) => ({
           id: p.id,
           name: p.name,

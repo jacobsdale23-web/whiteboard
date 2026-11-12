@@ -4,8 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { computeBar, addDays, barColor, tapTag, type GanttProject, type Bar } from "@/lib/gantt";
 import { JOB_KIND_COLORS, KIND_FILTERS, cleanKindFilter, jobKindFromOppType, kindMatchesFilter, oppTypeColor, type KindFilter } from "@/lib/job-kinds";
+import { crewFor, crewLine, type SchedRow } from "@/lib/schedule";
 import GanttChart from "./gantt-chart";
 import StatusDialog from "./status-dialog";
+
+// Local YYYY-MM-DD for a calendar day (matches how the schedule stores dates).
+const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 type Mode = "timeline" | "week" | "day";
 
@@ -73,7 +77,7 @@ const FILTER_KEY = "wb-calendar-job-filter";
 const PM_FILTER_KEY = "wb-calendar-pm-filter";
 const NO_PM = "__none"; // the "jobs with no PM yet" choice; "" means everyone
 
-export default function CalendarView({ projects: allProjects, events: allEvents, readOnly, pmPool }: { projects: GanttProject[]; events: CalendarEvent[]; readOnly: boolean; pmPool: string[] }) {
+export default function CalendarView({ projects: allProjects, events: allEvents, readOnly, pmPool, crew, names }: { projects: GanttProject[]; events: CalendarEvent[]; readOnly: boolean; pmPool: string[]; crew: SchedRow[]; names: string[] }) {
   const [mode, setMode] = useState<Mode>("timeline");
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
   const [filter, setFilter] = useState<KindFilter>("all");
@@ -217,13 +221,13 @@ export default function CalendarView({ projects: allProjects, events: allEvents,
       ) : null}
       {mode === "timeline" && !(filtered && !items.length && !events.length) && (
         <>
-          <GanttChart projects={projects} onSelect={setSelectedId} />
+          <GanttChart projects={projects} crew={crew} todayIso={isoOf(today)} onSelect={setSelectedId} />
           <UpcomingEvents events={events} today={today} />
         </>
       )}
-      {mode === "week" && <WeekView items={items} events={events} weekStart={startOfWeek(anchor)} today={today} onSelect={setSelectedId} />}
-      {mode === "day" && <DayView items={items} events={events} day={anchor} onSelect={setSelectedId} />}
-      {selected && <StatusDialog project={selected} readOnly={readOnly} onClose={() => setSelectedId(null)} />}
+      {mode === "week" && <WeekView items={items} events={events} crew={crew} weekStart={startOfWeek(anchor)} today={today} onSelect={setSelectedId} />}
+      {mode === "day" && <DayView items={items} events={events} crew={crew} day={anchor} onSelect={setSelectedId} />}
+      {selected && <StatusDialog project={selected} readOnly={readOnly} crew={crew} names={names} projectNames={Object.fromEntries(allProjects.map((p) => [p.id, p.name]))} todayIso={isoOf(today)} onClose={() => setSelectedId(null)} />}
     </div>
   );
 }
@@ -288,8 +292,10 @@ function UpcomingEvents({ events, today }: { events: CalendarEvent[]; today: Dat
   );
 }
 
-function WeekView({ items, events, weekStart, today, onSelect }: { items: Item[]; events: CalendarEvent[]; weekStart: Date; today: Date; onSelect: (id: string) => void }) {
+function WeekView({ items, events, crew, weekStart, today, onSelect }: { items: Item[]; events: CalendarEvent[]; crew: SchedRow[]; weekStart: Date; today: Date; onSelect: (id: string) => void }) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const weekFrom = isoOf(weekStart);
+  const weekTo = isoOf(addDays(weekStart, 6));
   const hasEvents = days.some((d) => eventsOn(events, d).length > 0);
   const visible = items.filter((x) => dayDiff(x.bar.end, weekStart) >= 0 && dayDiff(x.bar.start, weekStart) <= 6);
 
@@ -365,6 +371,7 @@ function WeekView({ items, events, weekStart, today, onSelect }: { items: Item[]
       {visible.map(({ project, bar }) => {
         const startCol = Math.max(0, dayDiff(bar.start, weekStart));
         const endCol = Math.min(6, dayDiff(bar.end, weekStart));
+        const sched = crewFor(crew, project.id, weekFrom, weekTo);
         return (
           <div
             key={project.id}
@@ -376,7 +383,11 @@ function WeekView({ items, events, weekStart, today, onSelect }: { items: Item[]
               </Link>
               {tapTag(project.jobKind) && <div style={{ fontSize: "0.66rem", fontWeight: 700, textTransform: "uppercase", color: barColor("status-active", project.jobKind) }}>{tapTag(project.jobKind)}</div>}
               {project.location && <div style={{ fontSize: "0.72rem", color: "var(--muted)" }}>{project.location}</div>}
-              {!!project.crew?.length && <div style={{ fontSize: "0.72rem", color: "var(--ink-soft)" }}>{project.crew.join(", ")}</div>}
+              {sched.length ? (
+                <div style={{ fontSize: "0.72rem", color: "var(--ink-soft)" }}>{[...new Set(sched.map((r) => r.person))].join(", ")}</div>
+              ) : (
+                !!project.crew?.length && <div style={{ fontSize: "0.72rem", color: "var(--ink-soft)" }}>{project.crew.join(", ")}</div>
+              )}
             </div>
             {days.map((d, i) => (
               <div
@@ -391,7 +402,7 @@ function WeekView({ items, events, weekStart, today, onSelect }: { items: Item[]
             ))}
             <div
               onClick={() => onSelect(project.id)}
-              title="Click to change status"
+              title={sched.length ? `Scheduled this week:\n${sched.map(crewLine).join("\n")}\n\nClick to change status or the schedule` : "Click to change status or the schedule"}
               style={{
                 cursor: "pointer",
                 gridColumn: `${startCol + 2} / ${endCol + 3}`,
@@ -424,7 +435,7 @@ function WeekView({ items, events, weekStart, today, onSelect }: { items: Item[]
   );
 }
 
-function DayView({ items, events, day, onSelect }: { items: Item[]; events: CalendarEvent[]; day: Date; onSelect: (id: string) => void }) {
+function DayView({ items, events, crew, day, onSelect }: { items: Item[]; events: CalendarEvent[]; crew: SchedRow[]; day: Date; onSelect: (id: string) => void }) {
   const visible = items.filter((x) => dayDiff(x.bar.start, day) <= 0 && dayDiff(x.bar.end, day) >= 0);
   const dayEvents = eventsOn(events, day);
 
@@ -490,7 +501,22 @@ function DayView({ items, events, day, onSelect }: { items: Item[]; events: Cale
               {bar.cls === "status-overdue" && <DayTag>Overdue</DayTag>}
               {!bar.estimated && !starts && !ends && <DayTag>{`Day ${dayNumber} of ${totalDays}`}</DayTag>}
             </div>
-            <Row label="Crew" value={project.crew?.length ? project.crew.join(", ") : "Unassigned"} />
+            {(() => {
+              const today_ = crewFor(crew, project.id, isoOf(day), isoOf(day));
+              return today_.length ? (
+                <div>
+                  <div style={{ color: "var(--muted)", fontSize: "0.72rem", textTransform: "uppercase" }}>Scheduled today</div>
+                  {today_.map((r) => (
+                    <div key={r.id} style={{ fontSize: "0.85rem" }}>
+                      <strong>{r.person}</strong>
+                      {r.location ? <span style={{ color: "var(--ink-soft)" }}> · {r.location}</span> : null}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <Row label="Crew" value={project.crew?.length ? project.crew.join(", ") : "Unassigned"} />
+              );
+            })()}
             <Row label="Completion" value={project.endDate || "TBD"} />
             <button
               onClick={() => onSelect(project.id)}
