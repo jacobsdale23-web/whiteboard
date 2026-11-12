@@ -9,8 +9,10 @@ import { getSessionAndProfile } from "@/lib/auth/current-user";
 import { requireProject } from "@/lib/auth/company";
 import { getObjectBuffer } from "@/lib/storage/s3";
 import { scanQuotePdf } from "@/lib/quote-scan";
-import { cleanQbLink, cleanQuoteFields, cleanQuoteLines } from "@/lib/quotes";
+import { cleanQbLink, cleanQuoteFields, cleanQuoteLines, isProposalNumber } from "@/lib/quotes";
 import { findJobCustomer, getConnection, nextInvoiceNumber, qbApi, qbAttach, qbConfig, qbQuery, qbQuote, QbError } from "@/lib/quickbooks";
+import { createQbJob, resolveParentCustomer } from "@/lib/qb-jobs";
+import { qbSafeName } from "@/lib/qb-compare";
 import { qbInvoiceLink } from "@/lib/qb-invoice";
 import { buildDailyLogsPdf } from "@/lib/daily-log-pdf";
 
@@ -158,6 +160,7 @@ export async function createInvoiceFromQuote(projectId: string, quoteId: string)
     const [quote] = await db.select().from(projectQuotes).where(and(eq(projectQuotes.id, quoteId), eq(projectQuotes.projectId, projectId)));
     if (!quote) return { error: "That quote no longer exists." };
     if (quote.billedInvoiceNo) return { error: `Invoice #${quote.billedInvoiceNo} is already recorded for this quote.` };
+    if (isProposalNumber(quote.number)) return await invoiceFromProposal(project, quote, name, conn.realmId);
 
     const estimates = await qbQuery<QbEstimate>(companyId, `select * from Estimate where DocNumber = '${qbQuote(quote.number)}'`, "Estimate");
     if (estimates.length !== 1) return { error: estimates.length ? `QuickBooks has more than one quote numbered ${quote.number}.` : `QuickBooks has no quote numbered ${quote.number}.` };
@@ -212,33 +215,7 @@ export async function createInvoiceFromQuote(projectId: string, quoteId: string)
     // The daily logs go on the invoice as backup. If that fails the invoice is still there.
     let note = typeof customer === "string" ? `Billed to ${est.CustomerRef?.name || "the quote's customer"}: QuickBooks has no job for ${project.projectNumber || "this project"} yet. You can change the customer on the invoice.` : undefined;
     if (!docNumber) note = [note, "I couldn't work out the next invoice number, so the invoice has none yet. Type it in QuickBooks."].filter(Boolean).join(" ");
-    try {
-      const logs = await db.select().from(dailyLogs).where(eq(dailyLogs.projectId, projectId));
-      if (logs.length) {
-        logs.sort((a, b) => a.date.localeCompare(b.date));
-        const [company] = await db.select().from(companies).where(eq(companies.id, companyId));
-        const items = await db.select().from(lineItems).where(eq(lineItems.projectId, projectId));
-        const pdf = await buildDailyLogsPdf(
-          { name: project.name, projectNumber: project.projectNumber, customer: project.customer, location: project.location, companyName: company?.name ?? "" },
-          logs.map((l) => ({
-            date: l.date,
-            foreman: l.foreman,
-            leakNumber: l.leakNumber,
-            taskNumber: l.taskNumber,
-            locusviewNumber: l.locusviewNumber,
-            address: l.address,
-            lineItem: l.lineItem,
-            lineItemDescription: l.lineItem ? items.find((i) => i.itemNo === l.lineItem)?.description || null : null,
-            quantities: [],
-            crew: l.crew || [],
-            description: l.description,
-            scopeChange: l.scopeChange,
-          })),
-          `${logs[0].date} to ${logs[logs.length - 1].date}`
-        );
-        await qbAttach(companyId, "Invoice", inv.Id, `Daily-Logs-${project.projectNumber || "job"}.pdf`, "application/pdf", Buffer.from(pdf));
-      }
-    } catch {
+    if (!(await attachDailyLogs(project, inv.Id))) {
       note = [note, "The invoice is in QuickBooks, but the daily logs PDF couldn't be attached. Export it from the Daily Logs section."].filter(Boolean).join(" ");
     }
     revalidatePath(`/projects/${projectId}`);
@@ -247,6 +224,115 @@ export async function createInvoiceFromQuote(projectId: string, quoteId: string)
     if (e instanceof QbError) return { error: e.message };
     return { error: "Something went wrong creating the invoice in QuickBooks. Check QuickBooks before trying again." };
   }
+}
+
+type ProjectRow = typeof projects.$inferSelect;
+
+// Puts the job's daily logs on a QuickBooks invoice as a PDF. true = attached or nothing to attach; false = it failed.
+async function attachDailyLogs(project: ProjectRow, invoiceId: string): Promise<boolean> {
+  try {
+    const logs = await db.select().from(dailyLogs).where(eq(dailyLogs.projectId, project.id));
+    if (!logs.length) return true;
+    logs.sort((a, b) => a.date.localeCompare(b.date));
+    const [company] = await db.select().from(companies).where(eq(companies.id, project.companyId));
+    const items = await db.select().from(lineItems).where(eq(lineItems.projectId, project.id));
+    const pdf = await buildDailyLogsPdf(
+      { name: project.name, projectNumber: project.projectNumber, customer: project.customer, location: project.location, companyName: company?.name ?? "" },
+      logs.map((l) => ({
+        date: l.date,
+        foreman: l.foreman,
+        leakNumber: l.leakNumber,
+        taskNumber: l.taskNumber,
+        locusviewNumber: l.locusviewNumber,
+        address: l.address,
+        lineItem: l.lineItem,
+        lineItemDescription: l.lineItem ? items.find((i) => i.itemNo === l.lineItem)?.description || null : null,
+        quantities: [],
+        crew: l.crew || [],
+        description: l.description,
+        scopeChange: l.scopeChange,
+      })),
+      `${logs[0].date} to ${logs[logs.length - 1].date}`
+    );
+    await qbAttach(project.companyId, "Invoice", invoiceId, `Daily-Logs-${project.projectNumber || "job"}.pdf`, "application/pdf", Buffer.from(pdf));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// A job billed from our own proposal rather than a QuickBooks estimate (a one-time lump sum or a unit-price bid): the invoice is
+// built from the proposal's saved scope lines. It goes on the QuickBooks job named with the project number; when QuickBooks doesn't
+// have that job yet, the customer (name only) and the job are created first. Saved there, never emailed.
+async function invoiceFromProposal(project: ProjectRow, quote: typeof projectQuotes.$inferSelect, name: string, realmId: string): Promise<CreateInvoiceResult> {
+  const companyId = project.companyId;
+  const lines = (quote.lines || []).filter((l) => l.description?.trim());
+  if (!lines.length) return { error: "The proposal has no scope lines. Edit it and add what is being billed (for example 13 bores at $7,500)." };
+  const sum = Math.round(lines.reduce((s, l) => s + Number(l.amount || 0), 0) * 100) / 100;
+  if (Math.abs(sum - Number(quote.total)) > 0.005) return { error: `The proposal's lines add up to $${sum.toLocaleString()} but its total is $${Number(quote.total).toLocaleString()}. Edit it so they agree.` };
+  if (sum <= 0) return { error: "The proposal total must be more than zero." };
+  const customerName = (quote.customer || project.customer || "").trim();
+  if (!customerName) return { error: "Give the proposal a customer first." };
+
+  const items = await qbQuery<{ Id: string; Name: string }>(companyId, "select Id, Name from Item where Name = 'Labor & Equipment'", "Item");
+  if (!items.length) return { error: 'QuickBooks has no product/service called "Labor & Equipment".' };
+
+  const notes: string[] = [];
+  let billTo: string;
+  const job = await findJobCustomer(companyId, project.projectNumber, null);
+  if (typeof job !== "string") {
+    billTo = job.Id;
+  } else if (job.includes("more than one job")) {
+    return { error: job };
+  } else {
+    const parent = await resolveParentCustomer(companyId, customerName);
+    if (typeof parent === "string") return { error: parent };
+    if (parent.created) {
+      notes.push(`Created the customer "${parent.DisplayName}" in QuickBooks (name only).${parent.near.length ? ` Similar customers already there: ${parent.near.join("; ")} — if one is the same company, merge them in QuickBooks.` : ""}`);
+    }
+    if (project.projectNumber) {
+      try {
+        const made = await createQbJob(companyId, `${project.projectNumber} - ${qbSafeName(project.name)}`, parent.Id);
+        billTo = made.id;
+        notes.push(`Created the job "${project.projectNumber} - ${qbSafeName(project.name)}" under ${parent.DisplayName} so the income lands on it.`);
+      } catch (e) {
+        return { error: `${e instanceof Error ? e.message : "Couldn't create the job in QuickBooks."}${parent.created ? ` (The customer "${parent.DisplayName}" was created first, so trying again will reuse it.)` : ""}` };
+      }
+    } else {
+      billTo = parent.Id;
+      notes.push("This project has no number yet, so the invoice is on the customer itself, not a job.");
+    }
+  }
+
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+  const docNumber = await nextInvoiceNumber(companyId);
+  if (!docNumber) notes.push("I couldn't work out the next invoice number, so the invoice has none yet. Type it in QuickBooks.");
+  const payload = {
+    CustomerRef: { value: billTo },
+    ...(docNumber ? { DocNumber: docNumber } : {}),
+    TxnDate: today,
+    PrivateNote: `From White Board: proposal${quote.quoteDate ? ` dated ${quote.quoteDate}` : ""}`,
+    Line: lines.map((l) => {
+      const qty = Number(l.qty) > 0 ? Number(l.qty) : 1;
+      return {
+        DetailType: "SalesItemLineDetail",
+        Amount: l.amount,
+        Description: l.description,
+        SalesItemLineDetail: { ItemRef: { value: items[0].Id, name: items[0].Name }, Qty: qty, UnitPrice: Math.round((l.amount / qty) * 100000) / 100000, TaxCodeRef: { value: "NON" } },
+      };
+    }),
+  };
+  const created = await qbApi<{ Invoice?: { Id: string; DocNumber?: string; TotalAmt?: number } }>(companyId, "POST", "/invoice", payload);
+  const inv = created.Invoice;
+  if (!inv?.Id) return { error: "QuickBooks didn't confirm the invoice. Check QuickBooks before trying again." };
+
+  await db
+    .update(projectQuotes)
+    .set({ billedInvoiceNo: inv.DocNumber || null, billedDate: today, billedAmount: (inv.TotalAmt ?? quote.total) as never, billedBy: name, qbInvoiceId: inv.Id })
+    .where(eq(projectQuotes.id, quote.id));
+  if (!(await attachDailyLogs(project, inv.Id))) notes.push("The invoice is in QuickBooks, but the daily logs PDF couldn't be attached. Export it from the Daily Logs section.");
+  revalidatePath(`/projects/${project.id}`);
+  return { docNumber: inv.DocNumber, link: qbInvoiceLink(realmId, inv.Id), note: notes.length ? notes.join(" ") : undefined };
 }
 
 // For a wrong invoice number or a voided invoice.

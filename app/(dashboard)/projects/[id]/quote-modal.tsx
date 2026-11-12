@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { MAX_PROJECT_FILE_MB } from "@/lib/project-files";
-import { linesTotal } from "@/lib/quotes";
+import { isProposalNumber, linesTotal } from "@/lib/quotes";
 import { requestProjectFileUpload, confirmProjectFileUpload } from "./project-file-actions";
 import { saveQuote, scanQuoteFile } from "./quote-actions";
 
@@ -32,6 +32,8 @@ export const money = (n: number) => n.toLocaleString("en-US", { style: "currency
 // it; everything stays editable because the numbers here are what the job is billed against.
 export default function QuoteModal({ projectId, customer, quote, onClose }: { projectId: string; customer: string | null; quote?: QuoteRow; onClose: () => void }) {
   const [number, setNumber] = useState(quote?.number || "");
+  // Billing from our own proposal (a one-time lump sum or unit-price bid) rather than a QuickBooks estimate.
+  const [isProposal, setIsProposal] = useState(quote ? isProposalNumber(quote.number) : false);
   const [quoteDate, setQuoteDate] = useState(quote?.quoteDate || "");
   const [cust, setCust] = useState(quote?.customer || customer || "");
   const [total, setTotal] = useState(quote ? String(quote.total) : "");
@@ -86,7 +88,8 @@ export default function QuoteModal({ projectId, customer, quote, onClose }: { pr
     setError("");
     setBusy("saving");
     try {
-      const res = await saveQuote(projectId, { number, quoteDate, customer: cust, total, expires, qbLink, lines, fileId }, quote?.id);
+      const finalNumber = isProposal ? (quoteDate ? `Proposal ${quoteDate}` : "Proposal") : number;
+      const res = await saveQuote(projectId, { number: finalNumber, quoteDate, customer: cust, total, expires, qbLink: isProposal ? "" : qbLink, lines, fileId }, quote?.id);
       if (res.error) {
         setError(res.error);
         setBusy("");
@@ -103,9 +106,15 @@ export default function QuoteModal({ projectId, customer, quote, onClose }: { pr
     <div style={overlayStyle} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div style={modalStyle}>
         <h2 style={{ marginBottom: 6, textTransform: "uppercase" }}>{quote ? "Edit Quote" : "Attach Quote"}</h2>
-        <p style={{ color: "var(--muted)", fontSize: "0.84rem", marginBottom: 16 }}>
-          The QuickBooks quote this job is billed from. It stays with the job like a contract does, so when the work is done you can check it against the daily logs and bill it.
+        <p style={{ color: "var(--muted)", fontSize: "0.84rem", marginBottom: 10 }}>
+          The quote or proposal this job is billed from. It stays with the job like a contract does, so when the work is done you can check it against the daily logs and bill it.
         </p>
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: "0.86rem", marginBottom: 16 }}>
+          <input type="checkbox" checked={isProposal} onChange={(e) => setIsProposal(e.target.checked)} style={{ marginTop: 3 }} />
+          <span>
+            <strong>This is our own proposal, not a QuickBooks quote.</strong> There&apos;s no estimate in QuickBooks, so the invoice is built from the scope lines below. The customer and job are created in QuickBooks if they&apos;re missing.
+          </span>
+        </label>
 
         <div style={{ border: "1px dashed var(--border)", borderRadius: 8, padding: "12px 14px", marginBottom: 16, background: "var(--surface-2)" }}>
           <label style={labelStyle}>Quote PDF from QuickBooks (optional)</label>
@@ -119,9 +128,11 @@ export default function QuoteModal({ projectId, customer, quote, onClose }: { pr
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 14 }}>
-          <Field label="Quote #">
-            <input value={number} onChange={(e) => setNumber(e.target.value)} style={inputStyle} />
-          </Field>
+          {!isProposal && (
+            <Field label="Quote #">
+              <input value={number} onChange={(e) => setNumber(e.target.value)} style={inputStyle} />
+            </Field>
+          )}
           <Field label="Quote date">
             <input type="date" value={quoteDate} onChange={(e) => setQuoteDate(e.target.value)} style={inputStyle} />
           </Field>
@@ -136,9 +147,11 @@ export default function QuoteModal({ projectId, customer, quote, onClose }: { pr
           <Field label="Customer">
             <input value={cust} onChange={(e) => setCust(e.target.value)} style={inputStyle} />
           </Field>
-          <Field label="QuickBooks link (optional)">
-            <input value={qbLink} onChange={(e) => setQbLink(e.target.value)} placeholder="Paste the address of the estimate in QuickBooks" style={inputStyle} />
-          </Field>
+          {!isProposal && (
+            <Field label="QuickBooks link (optional)">
+              <input value={qbLink} onChange={(e) => setQbLink(e.target.value)} placeholder="Paste the address of the estimate in QuickBooks" style={inputStyle} />
+            </Field>
+          )}
         </div>
 
         <label style={labelStyle}>Scope as quoted</label>

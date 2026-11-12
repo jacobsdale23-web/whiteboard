@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { billingChecks } from "@/lib/quotes";
+import { billingChecks, isProposalNumber } from "@/lib/quotes";
 import { getProjectFileDownloadUrl } from "./project-file-actions";
 import { clearQuoteBilled, createInvoiceFromQuote, deleteQuote, recordQuoteBilled } from "./quote-actions";
 import QuoteModal, { money, type QuoteRow } from "./quote-modal";
@@ -46,7 +46,7 @@ export default function QuoteCard({ projectId, customer, jobStatus, qb, quotes, 
         <div>
           <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase" }}>Quote &amp; Billing</h3>
           <p style={{ fontSize: "0.76rem", color: "var(--muted)", marginTop: 2 }}>
-            For jobs billed from a QuickBooks quote. Keep the quote here, check it against the daily logs, then bill it in QuickBooks.
+            For jobs billed from a quote or our own proposal. Keep it here, check it against the daily logs, then bill it in QuickBooks.
           </p>
         </div>
         <button onClick={() => setEditing("new")} style={addBtnStyle}>
@@ -183,14 +183,15 @@ function QuoteBlock({
 
   const billed = !!q.billedInvoiceNo;
   const differs = billed && q.billedAmount != null && Math.abs(q.billedAmount - q.total) > 0.005;
+  const proposal = isProposalNumber(q.number); // our own proposal: no QuickBooks estimate to copy from
 
   return (
     <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", marginBottom: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontWeight: 700 }}>
-            Quote #{q.number}
-            <span style={chipStyle}>{billed ? "Billed" : q.status}</span>
+            {proposal ? "Proposal" : `Quote #${q.number}`}
+            <span style={chipStyle}>{billed ? "Billed" : proposal ? "Not yet billed" : q.status}</span>
           </div>
           <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: 2 }}>
             {[q.customer, q.quoteDate && `dated ${fmtDate(q.quoteDate)}`, q.expires && `expires ${fmtDate(q.expires)}`].filter(Boolean).join(" · ")}
@@ -302,7 +303,9 @@ function QuoteBlock({
             {qb.connected ? (
               confirming ? (
                 <div style={{ flexBasis: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", fontSize: "0.86rem" }}>
-                  Create the invoice for quote #{q.number} ({money(q.total)}) in QuickBooks{qb.companyName ? ` (${qb.companyName})` : ""}? It is saved there, not emailed, and opens for you to review.
+                  {proposal
+                    ? `Create an invoice for ${money(q.total)} from this proposal in QuickBooks${qb.companyName ? ` (${qb.companyName})` : ""}, billed to ${q.customer || "the customer"}? If QuickBooks doesn't have that customer or this job yet, they are created too (customer by name only). It is saved there, not emailed, and opens for you to review.`
+                    : `Create the invoice for quote #${q.number} (${money(q.total)}) in QuickBooks${qb.companyName ? ` (${qb.companyName})` : ""}? It is saved there, not emailed, and opens for you to review.`}
                   {!ready && <div style={{ color: "var(--danger)", marginTop: 4 }}>Heads up: the Before you bill checks aren&apos;t all clear.</div>}
                   <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                     <button onClick={createInvoice} disabled={busy} style={primaryBtnStyle}>
@@ -320,9 +323,11 @@ function QuoteBlock({
               )
             ) : (
               <>
-                <a href={q.qbLink || "https://qbo.intuit.com/app/estimates"} target="_blank" rel="noreferrer" style={{ ...primaryBtnStyle, textDecoration: "none", display: "inline-block" }}>
-                  {q.qbLink ? "Open quote in QuickBooks ↗" : "Open QuickBooks estimates ↗"}
-                </a>
+                {!proposal && (
+                  <a href={q.qbLink || "https://qbo.intuit.com/app/estimates"} target="_blank" rel="noreferrer" style={{ ...primaryBtnStyle, textDecoration: "none", display: "inline-block" }}>
+                    {q.qbLink ? "Open quote in QuickBooks ↗" : "Open QuickBooks estimates ↗"}
+                  </a>
+                )}
                 {qb.configured && (
                   <a href={`/api/quickbooks/connect?returnTo=${encodeURIComponent(`/projects/${projectId}`)}`} style={{ ...secondaryBtnStyle, textDecoration: "none", display: "inline-block" }} title="One-time sign-in so White Board can create the invoice for you">
                     Connect QuickBooks
@@ -339,7 +344,9 @@ function QuoteBlock({
               I billed it — record invoice
             </button>
             <span style={{ fontSize: "0.76rem", color: "var(--muted)" }}>
-              {qb.connected
+              {proposal && !qb.connected
+                ? "Connect QuickBooks to create the invoice from this proposal, or bill it in QuickBooks yourself and record the invoice number."
+                : qb.connected
                 ? "Opens the new invoice in QuickBooks to review. Nothing is emailed."
                 : q.qbLink
                   ? "In QuickBooks choose Create invoice, then come back and record the invoice number."

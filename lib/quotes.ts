@@ -3,6 +3,10 @@
 
 export type QuoteLine = { description: string; qty: number; amount: number };
 
+// A job billed straight from our own proposal (no QuickBooks estimate) keeps that proposal as a "quote" whose number starts
+// with "Proposal". Its invoice is built from the saved scope lines instead of copied from a QuickBooks estimate.
+export const isProposalNumber = (n: string) => /^proposal\b/i.test((n || "").trim());
+
 const MAX_AMOUNT = 100_000_000;
 const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
 const round2 = (n: number) => Math.round(n * 100) / 100;
