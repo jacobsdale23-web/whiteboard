@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { addDays, coversDay, findConflicts, shortDate, type SchedRow } from "@/lib/schedule";
+import { addDays } from "@/lib/gantt";
+import { coversDay, findConflicts, shortDate, type SchedRow } from "@/lib/schedule";
 import ScheduleForm from "./schedule-form";
 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
