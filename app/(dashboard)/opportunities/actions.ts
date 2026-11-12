@@ -85,7 +85,8 @@ export async function updateBidStatus(
         status: "upcoming",
         value: bidValue as never,
         crew: [],
-        billingType: existing.oppType === "T&M (Atmos)" ? "tm" : "lump_sum",
+        // T&M Job and T&M (Atmos) start as time-and-material jobs; everything else (including Quick Job) is lump sum.
+        billingType: existing.oppType === "T&M (Atmos)" || existing.oppType === "T&M Job" ? "tm" : "lump_sum",
         // A won Hot Tap / FWI Hot Tap starts as that kind of job (an FWI hot tap is then pointed at the job it is billed through).
         jobKind: jobKindFromOppType(existing.oppType),
         // Whoever estimated the bid manages the job (the PM can be changed on the job afterwards).
