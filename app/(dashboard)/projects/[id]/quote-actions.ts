@@ -330,6 +330,18 @@ async function invoiceFromProposal(project: ProjectRow, quote: typeof projectQuo
     .update(projectQuotes)
     .set({ billedInvoiceNo: inv.DocNumber || null, billedDate: today, billedAmount: (inv.TotalAmt ?? quote.total) as never, billedBy: name, qbInvoiceId: inv.Id })
     .where(eq(projectQuotes.id, quote.id));
+  // The proposal itself goes on the invoice as backup. If that fails the invoice is still there.
+  if (quote.fileId) {
+    try {
+      const [file] = await db.select().from(projectFiles).where(and(eq(projectFiles.id, quote.fileId), eq(projectFiles.projectId, project.id)));
+      if (!file) throw new Error("missing");
+      const type = /\.pdf$/i.test(file.filename) ? "application/pdf" : /\.png$/i.test(file.filename) ? "image/png" : /\.jpe?g$/i.test(file.filename) ? "image/jpeg" : null;
+      if (!type) throw new Error("type");
+      await qbAttach(companyId, "Invoice", inv.Id, file.filename, type, await getObjectBuffer(file.storageKey));
+    } catch {
+      notes.push("The invoice is in QuickBooks, but the proposal PDF couldn't be attached. Attach it there by hand.");
+    }
+  }
   if (!(await attachDailyLogs(project, inv.Id))) notes.push("The invoice is in QuickBooks, but the daily logs PDF couldn't be attached. Export it from the Daily Logs section.");
   revalidatePath(`/projects/${project.id}`);
   return { docNumber: inv.DocNumber, link: qbInvoiceLink(realmId, inv.Id), note: notes.length ? notes.join(" ") : undefined };
