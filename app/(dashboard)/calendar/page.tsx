@@ -57,6 +57,7 @@ export default async function CalendarPage() {
           value: readOnly ? null : p.value,
           crew: p.crew,
           jobKind: p.jobKind,
+          billingType: p.billingType,
           pm: p.pm,
         }))}
       />

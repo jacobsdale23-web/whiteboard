@@ -10,7 +10,8 @@ export type GanttProject = {
   duration: string | null;
   value: string | number | null;
   crew: string[] | null;
-  jobKind?: string | null; // standard | hot_tap | fwi_hot_tap
+  jobKind?: string | null; // standard | quick | hot_tap | fwi_hot_tap
+  billingType?: string | null; // lump_sum | tm, for the calendar's T&M filter
   pm?: string | null; // the project manager, for the calendar's PM filter
 };
 
@@ -34,7 +35,7 @@ export function barColor(cls: string, jobKind?: string | null): string {
 
 export function tapTag(jobKind?: string | null): string | null {
   const kind = cleanJobKind(jobKind);
-  return kind === "standard" ? null : JOB_KIND_LABELS[kind];
+  return kind === "hot_tap" || kind === "fwi_hot_tap" ? JOB_KIND_LABELS[kind] : null;
 }
 
 function parseDate(s: string | null): Date | null {

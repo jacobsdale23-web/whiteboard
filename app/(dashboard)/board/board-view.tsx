@@ -282,7 +282,7 @@ function tapBorder(p: BoardProject): React.CSSProperties {
 
 function KindTag({ p }: { p: BoardProject }) {
   const kind = cleanJobKind(p.jobKind);
-  if (kind === "standard") return null;
+  if (!JOB_KIND_COLORS[kind]) return null;
   return (
     <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
       <span style={{ background: JOB_KIND_COLORS[kind]!, color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase" }}>{JOB_KIND_LABELS[kind]}</span>
