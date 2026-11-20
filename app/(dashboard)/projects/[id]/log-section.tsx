@@ -1,8 +1,11 @@
 "use client";
 
-import { useId, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { addLog, deleteLog, updateLog } from "./actions";
 import { improveDescription } from "./ai-actions";
+import { discardLogPhoto, getLogPhotoUrls, requestLogPhotoUpload } from "./log-photo-actions";
+import { shrinkPhoto } from "@/lib/shrink-photo";
+import { MAX_LOG_PHOTOS } from "@/lib/log-photos";
 
 import { POSITIONS } from "@/lib/positions";
 import { byItemNo, fmtQty } from "@/lib/production";
@@ -20,6 +23,7 @@ type LogEntry = {
   address: string | null;
   taskNumber: string | null;
   locusviewNumber: string | null;
+  photos?: { key: string; caption: string }[] | null;
   editedAt: Date | null;
   editedBy: string | null;
 };
@@ -27,6 +31,7 @@ type LineItem = { itemNo: string; description: string | null; unit: string | nul
 type Choice = { value: string; label: string };
 type CrewRow = { key: number; name: string; position: string; hours: string };
 type QtyRow = { key: number; itemNo: string; qty: string };
+type PhotoDraft = { key: string; caption: string; previewUrl?: string; isNew?: boolean };
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -111,6 +116,60 @@ function LogForm({
   const [saving, setSaving] = useState(false);
   const descRef = useRef<HTMLTextAreaElement>(null);
   const usual = usualCrews[foreman.trim().toLowerCase()] || [];
+
+  // Pictures: taken with the phone's camera or chosen from its photos, shrunk, then sent straight to storage.
+  const [photos, setPhotos] = useState<PhotoDraft[]>((initial?.photos || []).map((p) => ({ key: p.key, caption: p.caption })));
+  const [photoBusy, setPhotoBusy] = useState("");
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const libraryRef = useRef<HTMLInputElement>(null);
+  const initialId = initial?.id;
+  const hadPhotos = !!initial?.photos?.length;
+  // Saved pictures come back as links so they can be seen (and removed) while editing.
+  useEffect(() => {
+    if (!initialId || !hadPhotos) return;
+    let alive = true;
+    getLogPhotoUrls(projectId, initialId).then((res) => {
+      if (!alive || !res.photos) return;
+      const urls = new Map(res.photos.map((p) => [p.key, p.url]));
+      setPhotos((cur) => cur.map((p) => ({ ...p, previewUrl: p.previewUrl || urls.get(p.key) })));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [initialId, hadPhotos, projectId]);
+
+  async function addPhoto(file: File | undefined) {
+    if (!file) return;
+    setError("");
+    if (photos.length >= MAX_LOG_PHOTOS) return setError(`You can add up to ${MAX_LOG_PHOTOS} photos.`);
+    setPhotoBusy("Uploading photo…");
+    try {
+      const blob = await shrinkPhoto(file);
+      const req = await requestLogPhotoUpload(projectId, blob.type || "image/jpeg");
+      if (req.error || !req.uploadUrl || !req.storageKey) return setError(req.error || "Couldn't start the upload.");
+      const put = await fetch(req.uploadUrl, { method: "PUT", headers: { "Content-Type": blob.type || "image/jpeg" }, body: blob });
+      if (!put.ok) return setError("The photo upload failed. Please try again.");
+      setPhotos((p) => [...p, { key: req.storageKey!, caption: "", previewUrl: URL.createObjectURL(blob), isNew: true }]);
+    } catch {
+      setError("Couldn't upload that photo. Please try again.");
+    } finally {
+      setPhotoBusy("");
+      if (cameraRef.current) cameraRef.current.value = "";
+      if (libraryRef.current) libraryRef.current.value = "";
+    }
+  }
+
+  // Removing a picture that was already saved only takes effect when the log is saved; a brand-new one is deleted now.
+  function removePhoto(key: string) {
+    const gone = photos.find((p) => p.key === key);
+    if (gone?.isNew) void discardLogPhoto(projectId, key);
+    setPhotos((p) => p.filter((x) => x.key !== key));
+  }
+
+  function cancel() {
+    photos.filter((p) => p.isNew).forEach((p) => void discardLogPhoto(projectId, p.key));
+    onDone();
+  }
 
   async function improve() {
     setAiError("");
@@ -400,12 +459,52 @@ function LogForm({
         )}
       </Field>
 
+      <label style={labelStyle}>
+        Photos ({photos.length}/{MAX_LOG_PHOTOS})
+      </label>
+      <input type="hidden" name="photos" value={JSON.stringify(photos.map((p) => ({ key: p.key, caption: p.caption })))} />
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" aria-label="Take a photo" style={{ display: "none" }} onChange={(e) => void addPhoto(e.target.files?.[0])} />
+      <input ref={libraryRef} type="file" accept="image/*" aria-label="Choose a photo" style={{ display: "none" }} onChange={(e) => void addPhoto(e.target.files?.[0])} />
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+        <button type="button" disabled={!!photoBusy || photos.length >= MAX_LOG_PHOTOS} onClick={() => cameraRef.current?.click()} style={addBtnStyle}>
+          📷 Take photo
+        </button>
+        <button type="button" disabled={!!photoBusy || photos.length >= MAX_LOG_PHOTOS} onClick={() => libraryRef.current?.click()} style={addBtnStyle}>
+          Choose from phone
+        </button>
+        {photoBusy && <span style={{ fontSize: "0.8rem", color: "var(--muted)", alignSelf: "center" }}>{photoBusy}</span>}
+      </div>
+      {photos.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10, marginBottom: 14 }}>
+          {photos.map((p, i) => (
+            <div key={p.key} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 8, background: "var(--bg)" }}>
+              {p.previewUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={p.previewUrl} alt={`Photo ${i + 1}`} style={{ width: "100%", height: 100, objectFit: "cover", borderRadius: 6 }} />
+              ) : (
+                <div style={{ height: 100, display: "grid", placeItems: "center", color: "var(--muted)", fontSize: "0.78rem" }}>Loading…</div>
+              )}
+              <input
+                type="text"
+                value={p.caption}
+                placeholder="Caption (optional)"
+                onChange={(e) => setPhotos((cur) => cur.map((x) => (x.key === p.key ? { ...x, caption: e.target.value } : x)))}
+                style={{ ...inputStyle, marginTop: 6 }}
+              />
+              <button type="button" onClick={() => removePhoto(p.key)} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: "0.76rem", cursor: "pointer", padding: "4px 0 0" }}>
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {error && <p style={{ color: "var(--danger)", fontSize: "0.85rem", marginBottom: 10 }}>{error}</p>}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-        <button type="button" onClick={onDone} style={secondaryBtnStyle}>
+        <button type="button" onClick={cancel} style={secondaryBtnStyle}>
           Cancel
         </button>
-        <button type="submit" disabled={saving} style={primaryBtnStyle}>
+        <button type="submit" disabled={saving || !!photoBusy} style={primaryBtnStyle}>
           {saving ? "Saving…" : editing ? "Save Changes" : "Add"}
         </button>
       </div>
@@ -549,6 +648,7 @@ export default function LogSection({
                   </div>
                 )}
                 <div style={{ fontSize: "0.85rem", marginTop: 6 }}>{l.description}</div>
+                {!!l.photos?.length && <LogPhotos projectId={projectId} logId={l.id} count={l.photos.length} />}
                 {l.editedAt && (
                   <div style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: 4 }}>
                     Edited{l.editedBy ? ` by ${l.editedBy}` : ""} on {new Date(l.editedAt).toLocaleDateString("en-US", { timeZone: "America/Chicago" })}
@@ -583,6 +683,43 @@ export default function LogSection({
         })
       ) : (
         <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>No daily logs yet.</p>
+      )}
+    </div>
+  );
+}
+
+// A log's pictures: tap "N photos" to load them (links are made on demand), tap one to open it full size.
+function LogPhotos({ projectId, logId, count }: { projectId: string; logId: string; count: number }) {
+  const [open, setOpen] = useState(false);
+  const [photos, setPhotos] = useState<{ url: string; caption: string; key: string }[] | null>(null);
+  const [error, setError] = useState("");
+
+  async function toggle() {
+    if (open) return setOpen(false);
+    setOpen(true);
+    if (photos) return;
+    const res = await getLogPhotoUrls(projectId, logId);
+    if (res.error || !res.photos) setError(res.error || "Couldn't load the photos.");
+    else setPhotos(res.photos);
+  }
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button type="button" onClick={toggle} style={addBtnStyle}>
+        📷 {count} photo{count === 1 ? "" : "s"} {open ? "▲" : "▼"}
+      </button>
+      {open && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 8, marginTop: 8 }}>
+          {error && <span style={{ color: "var(--danger)", fontSize: "0.8rem" }}>{error}</span>}
+          {!photos && !error && <span style={{ color: "var(--muted)", fontSize: "0.8rem" }}>Loading…</span>}
+          {photos?.map((p, i) => (
+            <a key={p.key} href={p.url} target="_blank" rel="noreferrer" style={{ textDecoration: "none", color: "inherit" }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={p.url} alt={p.caption || `Photo ${i + 1}`} style={{ width: "100%", height: 100, objectFit: "cover", borderRadius: 6, border: "1px solid var(--border)" }} />
+              {p.caption && <div style={{ fontSize: "0.72rem", color: "var(--ink-soft)", marginTop: 2 }}>{p.caption}</div>}
+            </a>
+          ))}
+        </div>
       )}
     </div>
   );

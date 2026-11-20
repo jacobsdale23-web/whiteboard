@@ -9,6 +9,8 @@ import { rememberNames, recordCrewUse } from "@/lib/people";
 import { cleanQuantities, type LogQuantity } from "@/lib/production";
 import { getSessionAndProfile, isSafetyViewer, assertNotSafety } from "@/lib/auth/current-user";
 import { requireProject } from "@/lib/auth/company";
+import { cleanLogPhotos } from "@/lib/log-photos";
+import { deleteObject } from "@/lib/storage/s3";
 
 // ---------- schedule (milestones) ----------
 
@@ -69,6 +71,10 @@ async function prepareLog(project: { id: string; companyId: string; billingType:
 
   if (!date || !foreman || !description) return { error: "Date, foreman and a description of the work are required." };
 
+  const cleanedPhotos = cleanLogPhotos(formData.get("photos"), projectId);
+  if ("error" in cleanedPhotos) return { error: cleanedPhotos.error };
+  const photos = cleanedPhotos.photos;
+
   // Unit-price jobs: what was installed, by line item (T&M jobs have no quantities).
   let quantities: LogQuantity[] = [];
   if (project.billingType !== "tm") {
@@ -93,7 +99,7 @@ async function prepareLog(project: { id: string; companyId: string; billingType:
     if (!known.length) await db.insert(billingTasks).values({ id: randomUUID(), projectId, taskNumber });
   }
 
-  return { values: { date, leakNumber, foreman: foremanName, lineItem, quantities, scopeChange, crew: crewFinal, description, address, taskNumber, locusviewNumber } };
+  return { values: { date, leakNumber, foreman: foremanName, lineItem, quantities, scopeChange, crew: crewFinal, description, address, taskNumber, locusviewNumber, photos } };
 }
 
 export async function addLog(projectId: string, formData: FormData): Promise<{ error?: string }> {
@@ -127,12 +133,17 @@ export async function updateLog(projectId: string, logId: string, formData: Form
     .update(dailyLogs)
     .set({ ...values, editedAt: new Date(), editedBy: current.profile.name })
     .where(eq(dailyLogs.id, logId));
+  // Pictures taken off the log are gone for good.
+  const kept = new Set(values.photos.map((p) => p.key));
+  await Promise.all((existing.photos || []).filter((p) => !kept.has(p.key)).map((p) => deleteObject(p.key).catch(() => {})));
   revalidatePath(`/projects/${projectId}`);
   return {};
 }
 
 export async function deleteLog(projectId: string, id: string) {
   await assertNotSafety();
+  const existing = await db.query.dailyLogs.findFirst({ where: and(eq(dailyLogs.id, id), eq(dailyLogs.projectId, projectId)) });
   await db.delete(dailyLogs).where(eq(dailyLogs.id, id));
+  await Promise.all((existing?.photos || []).map((p) => deleteObject(p.key).catch(() => {})));
   revalidatePath(`/projects/${projectId}`);
 }

@@ -17,6 +17,8 @@ export type PdfLog = {
   description: string | null;
   // The foreman reported the work differed from the quote (explained in the description).
   scopeChange?: boolean;
+  // Pictures from the day (already fetched from storage).
+  photos?: { bytes: Uint8Array; caption: string }[];
 };
 
 export type PdfProject = { name: string; projectNumber: string | null; customer: string | null; location: string | null; companyName: string };
@@ -77,6 +79,13 @@ export async function buildDailyLogsPdf(project: PdfProject, logs: PdfLog[], ran
       for (const c of l.crew) w.row(`${c.name}  (${c.position})`, `${fmtHours(Number(c.hours) || 0)} hrs`, { indent: 8 });
       const dayHours = l.crew.reduce((m, c) => m + (Number(c.hours) || 0), 0);
       w.row("Total crew hours", `${fmtHours(dayHours)} hrs`, { bold: true, indent: 8 });
+    }
+    if (l.photos?.length) {
+      w.gap(4);
+      w.ensure(190);
+      w.text("Photos", { bold: true });
+      w.gap(2);
+      await w.photos(l.photos);
     }
     w.gap(8);
   }

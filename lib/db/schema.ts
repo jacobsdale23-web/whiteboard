@@ -173,6 +173,8 @@ export const dailyLogs = pgTable("daily_logs", {
   address: text("address"), // job-site address for this entry (T&M billing)
   taskNumber: text("task_number"), // Atmos-style task/PO number (T&M billing) — references billing_tasks.taskNumber
   locusviewNumber: text("locusview_number"), // Locusview work-order number (T&M billing)
+  // Pictures taken or chosen on the phone (storage keys in the private bucket) with an optional caption each.
+  photos: jsonb("photos").$type<{ key: string; caption: string }[]>().notNull().default([]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   // Set when someone corrects a log after it was submitted.
   editedAt: timestamp("edited_at"),

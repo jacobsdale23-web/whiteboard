@@ -65,6 +65,31 @@ export class Writer {
     this.page.drawText(r, { x: PAGE_W - MARGIN - font.widthOfTextAtSize(r, size), y: this.y - size, size, font, color: rgb(0.1, 0.1, 0.1) });
     this.y -= size + 4;
   }
+  // Pictures two across, each fit inside a box and captioned. A picture that can't be read is skipped.
+  async photos(items: { bytes: Uint8Array; caption: string }[], opts: { boxH?: number } = {}) {
+    const boxH = opts.boxH ?? 170;
+    const gap = 10;
+    const boxW = (PAGE_W - MARGIN * 2 - gap) / 2;
+    for (let i = 0; i < items.length; i += 2) {
+      this.ensure(boxH + 26);
+      for (let j = 0; j < 2 && i + j < items.length; j++) {
+        const p = items[i + j];
+        let img;
+        try {
+          img = p.bytes[0] === 0x89 && p.bytes[1] === 0x50 ? await this.doc.embedPng(p.bytes) : await this.doc.embedJpg(p.bytes);
+        } catch {
+          continue;
+        }
+        const x = MARGIN + j * (boxW + gap);
+        const scale = Math.min(boxW / img.width, boxH / img.height);
+        const w = img.width * scale;
+        const h = img.height * scale;
+        this.page.drawImage(img, { x: x + (boxW - w) / 2, y: this.y - h, width: w, height: h });
+        if (p.caption) this.page.drawText(clean(p.caption).slice(0, 90), { x, y: this.y - boxH - 10, size: 8, font: this.font, color: rgb(0.1, 0.1, 0.1) });
+      }
+      this.y -= boxH + 22;
+    }
+  }
   rule() {
     this.ensure(8);
     this.page.drawLine({ start: { x: MARGIN, y: this.y - 2 }, end: { x: PAGE_W - MARGIN, y: this.y - 2 }, thickness: 0.6, color: rgb(0.7, 0.7, 0.7) });

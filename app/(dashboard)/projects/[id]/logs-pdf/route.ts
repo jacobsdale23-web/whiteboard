@@ -4,6 +4,7 @@ import { companies, dailyLogs, lineItems, projects } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
 import { canAccessCompany } from "@/lib/auth/company";
 import { buildDailyLogsPdf } from "@/lib/daily-log-pdf";
+import { getObjectBuffer } from "@/lib/storage/s3";
 
 // Admin-only: a client-ready PDF of one log, a hand-picked set (?ids=a,b,c),
 // or a date range (?from=YYYY-MM-DD&to=YYYY-MM-DD).
@@ -42,9 +43,26 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const itemDesc = new Map(items.map((i) => [i.itemNo, i.description]));
   const itemUnit = new Map(items.map((i) => [i.itemNo, i.unit]));
 
+  // A picture that can't be fetched is skipped rather than failing the whole export.
+  type Pic = { bytes: Uint8Array; caption: string };
+  const photoBytes = new Map<string, Pic[]>();
+  for (const l of rows) {
+    const got: (Pic | null)[] = await Promise.all(
+      (l.photos || []).map(async (p): Promise<Pic | null> => {
+        try {
+          return { bytes: new Uint8Array(await getObjectBuffer(p.key)), caption: p.caption };
+        } catch {
+          return null;
+        }
+      })
+    );
+    photoBytes.set(l.id, got.filter((x): x is Pic => !!x));
+  }
+
   const pdf = await buildDailyLogsPdf(
     { name: project.name, projectNumber: project.projectNumber, customer: project.customer, location: project.location, companyName: company?.name ?? "" },
     rows.map((l) => ({
+      photos: photoBytes.get(l.id) || [],
       date: l.date,
       foreman: l.foreman,
       leakNumber: l.leakNumber,
