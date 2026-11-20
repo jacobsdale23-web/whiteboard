@@ -87,7 +87,7 @@ export async function createJobInQuickBooks(projectId: string): Promise<CheckRes
     const displayName = `${number} - ${qbSafeName(project.name)}`;
     let created;
     try {
-      created = await createQbJob(companyId, displayName, parent.Id);
+      created = await createQbJob(companyId, displayName, parent.Id, { start: project.startDate, end: project.endDate });
     } catch (e) {
       const why = e instanceof Error ? e.message : "unknown error";
       return { error: `${why}${parent.created ? ` (The customer "${parent.DisplayName}" was created in QuickBooks before this failed, so trying again will reuse it.)` : ""}` };
@@ -97,7 +97,7 @@ export async function createJobInQuickBooks(projectId: string): Promise<CheckRes
     refresh();
     revalidatePath(`/projects/${projectId}`);
     const kind = created.isProject === true ? "QuickBooks lists it as a Project" : created.isProject === false ? "QuickBooks lists it as a sub-customer, NOT a Project — check the Projects page" : "check the Projects page to see whether it appears there";
-    return { message: `Created "${displayName}" in QuickBooks under ${parent.DisplayName} and set ${number} on this job. ${kind}.${customerNote}` };
+    return { message: `Created "${displayName}" in QuickBooks under ${parent.DisplayName} and set ${number} on this job. ${kind}.${customerNote}${created.note ? ` ${created.note}` : ""}` };
   } catch (e) {
     if (e instanceof QbError) return { error: e.message };
     return { error: e instanceof Error ? e.message : "Couldn't create that job in QuickBooks." };

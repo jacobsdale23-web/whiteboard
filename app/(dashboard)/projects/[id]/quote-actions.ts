@@ -292,9 +292,9 @@ async function invoiceFromProposal(project: ProjectRow, quote: typeof projectQuo
     }
     if (project.projectNumber) {
       try {
-        const made = await createQbJob(companyId, `${project.projectNumber} - ${qbSafeName(project.name)}`, parent.Id);
+        const made = await createQbJob(companyId, `${project.projectNumber} - ${qbSafeName(project.name)}`, parent.Id, { start: project.startDate, end: project.endDate });
         billTo = made.id;
-        notes.push(`Created the job "${project.projectNumber} - ${qbSafeName(project.name)}" under ${parent.DisplayName} so the income lands on it.`);
+        notes.push(`Created the job "${project.projectNumber} - ${qbSafeName(project.name)}" under ${parent.DisplayName} so the income lands on it.${made.note ? ` ${made.note}` : ""}`);
       } catch (e) {
         return { error: `${e instanceof Error ? e.message : "Couldn't create the job in QuickBooks."}${parent.created ? ` (The customer "${parent.DisplayName}" was created first, so trying again will reuse it.)` : ""}` };
       }

@@ -51,9 +51,16 @@ export function decryptToken(stored: string): string {
 
 const endpoints = () => oauthEndpoints(process.env.QB_ENV === "sandbox" ? "sandbox" : "production");
 
+// Real QuickBooks Projects (not plain sub-customers) can only be made through Intuit's Projects API. It needs the
+// Intuit developer workspace on the Silver tier or above, with the "project-management.project" scope turned on for
+// the app. Then set QB_PROJECTS_API=on and connect QuickBooks again so the connection carries that scope. Until then
+// jobs are created as sub-customers, as before.
+export const qbProjectsEnabled = () => /^(1|on|true|yes)$/i.test((process.env.QB_PROJECTS_API || "").trim());
+
 export async function authorizeUrl(state: string): Promise<string> {
   const c = qbConfig();
-  const q = new URLSearchParams({ client_id: c.clientId, scope: "com.intuit.quickbooks.accounting", redirect_uri: c.redirectUri, response_type: "code", state });
+  const scope = qbProjectsEnabled() ? "com.intuit.quickbooks.accounting project-management.project" : "com.intuit.quickbooks.accounting";
+  const q = new URLSearchParams({ client_id: c.clientId, scope, redirect_uri: c.redirectUri, response_type: "code", state });
   return `${(await endpoints()).authorize}?${q}`;
 }
 
@@ -164,6 +171,29 @@ export async function qbApi<T = Record<string, unknown>>(companyId: string, meth
   }
   logQbCall({ op: "api", method, path, status: res.status, tid });
   return (await res.json()) as T;
+}
+
+// Intuit's GraphQL API (used for Projects). GraphQL reports most failures as a 200 with an "errors" list.
+export async function qbGraphql<T>(companyId: string, op: string, query: string, variables: Record<string, unknown>): Promise<{ data: T; realmId: string }> {
+  const { token, realmId } = await accessToken(companyId);
+  const url = process.env.QB_ENV === "sandbox" ? "https://qb-sandbox.api.intuit.com/graphql" : "https://qb.api.intuit.com/graphql";
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables }),
+  });
+  const tid = intuitTid(res);
+  let body: { data?: T; errors?: { message?: string }[] } = {};
+  try {
+    body = await res.json();
+  } catch {
+    /* not JSON */
+  }
+  const fault = (body.errors || []).map((e) => e.message).filter(Boolean).join("; ");
+  logQbCall({ op: `graphql ${op}`, method: "POST", path: "/graphql", status: res.status, tid, ...(fault ? { fault } : {}) });
+  if (res.status === 401 || res.status === 403) throw new QbError(`QuickBooks didn't allow that (${res.status})${fault ? `: ${fault}` : ""}.${refNote(tid)}`);
+  if (!res.ok || fault || !body.data) throw new QbError(`QuickBooks said no${fault ? `: ${fault}` : ` (${res.status})`}.${refNote(tid)}`);
+  return { data: body.data, realmId };
 }
 
 // The PDF QuickBooks renders for an invoice (the same one its Print or download gives).
