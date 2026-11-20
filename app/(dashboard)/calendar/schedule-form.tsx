@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { saveScheduleRow, type ScheduleFormState } from "./schedule-actions";
+import LocationInput from "../location-input";
 
 export type EditRow = { id: string; person: string; startDate: string; endDate: string; location: string | null; taskNumber: string | null; note: string | null };
 
@@ -80,7 +81,7 @@ export default function ScheduleForm({
         </Field>
       </div>
       <Field label="Location">
-        <input name="location" defaultValue={row?.location ?? defaultLocation} placeholder="Where they are going" style={inputStyle} />
+        <LocationInput name="location" defaultValue={row?.location ?? defaultLocation} placeholder="Where they are going" style={inputStyle} />
       </Field>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <Field label="Task / PO number">

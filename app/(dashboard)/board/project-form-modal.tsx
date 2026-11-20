@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { saveProject, deleteProject, type ProjectInput } from "./actions";
 import { JOB_KINDS, JOB_KIND_HINTS, JOB_KIND_LABELS, cleanJobKind } from "@/lib/job-kinds";
+import LocationInput from "../location-input";
 
 export type ParentOption = { id: string; label: string };
 
@@ -163,7 +164,7 @@ export default function ProjectFormModal({ project, crewList, pmList = [], paren
               </select>
             </Field>
             <Field label="Location">
-              <input type="text" name="location" defaultValue={project?.location || ""} style={inputStyle} />
+              <LocationInput name="location" defaultValue={project?.location || ""} placeholder="City, State" style={inputStyle} />
             </Field>
             <Field label="Status">
               <select name="status" defaultValue={project?.status || "upcoming"} style={inputStyle}>

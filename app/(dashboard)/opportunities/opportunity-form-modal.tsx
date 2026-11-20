@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { saveOpportunity, type OpportunityFormState } from "./actions";
+import LocationInput from "../location-input";
 
 const KINDS = ["Opportunity", "Meeting"];
 const OPP_TYPES = ["Bid Job", "Quick Job", "T&M Job", "Meeting", "Hot Tap", "FWI Hot Tap", "O&M", "T&M (Atmos)"];
@@ -99,8 +100,7 @@ export default function OpportunityFormModal({ opportunity, estimators }: { oppo
             </Field>
 
             <Field label="Location">
-              <input
-                type="text"
+              <LocationInput
                 name="location"
                 placeholder="City, State"
                 defaultValue={opportunity?.location || ""}
