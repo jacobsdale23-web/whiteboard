@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { addLog, deleteLog, updateLog } from "./actions";
+import CollapsibleCard from "./collapsible-card";
 import { improveDescription } from "./ai-actions";
 import { discardLogPhoto, getLogPhotoUrls, requestLogPhotoUpload } from "./log-photo-actions";
 import { shrinkPhoto } from "@/lib/shrink-photo";
@@ -556,15 +557,18 @@ export default function LogSection({
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   return (
-    <div style={cardStyle}>
-      <div style={headStyle}>
-        <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase" }}>Daily Logs</h3>
-        {!readOnly && (
+    <CollapsibleCard
+      storageKey={`logs-${projectId}`}
+      title="Daily Logs"
+      summary={sorted.length ? `${sorted.length} log${sorted.length === 1 ? "" : "s"} · latest ${sorted[0].date}` : "none yet"}
+      actions={
+        !readOnly && (
           <button onClick={() => setShowForm((s) => !s)} style={addBtnStyle}>
             + Add Entry
           </button>
-        )}
-      </div>
+        )
+      }
+    >
 
       {showForm && !readOnly && <LogForm {...formProps} onDone={() => setShowForm(false)} />}
 
@@ -684,7 +688,7 @@ export default function LogSection({
       ) : (
         <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>No daily logs yet.</p>
       )}
-    </div>
+    </CollapsibleCard>
   );
 }
 

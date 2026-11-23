@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { requestReceiptUpload, scanReceipt, saveReceipt, discardReceiptUpload } from "./receipt-actions";
+import CollapsibleCard from "./collapsible-card";
 import { TM_RECEIPT_CATEGORIES } from "@/lib/receipt-categories";
 import { shrinkPhoto } from "@/lib/shrink-photo";
 
@@ -119,11 +120,7 @@ export default function ReceiptSection({
   const set = (patch: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...patch } : d));
 
   return (
-    <div style={cardStyle}>
-      <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase" }}>Receipts</h3>
-      <p style={{ fontSize: "0.8rem", color: "var(--muted)", margin: "2px 0 12px" }}>
-        Take a photo of a receipt for this job. We read the vendor and total for you.
-      </p>
+    <CollapsibleCard storageKey={`receipts-${projectId}`} title="Receipts" subtitle="Take a photo of a receipt for this job. We read the vendor and total for you." relative>
 
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" aria-label="Take a photo of a receipt" style={invisibleInput} onChange={(e) => handleFile(e.target.files?.[0])} />
       <input ref={libraryRef} type="file" accept="image/*" aria-label="Choose a receipt photo" style={invisibleInput} onChange={(e) => handleFile(e.target.files?.[0])} />
@@ -220,7 +217,7 @@ export default function ReceiptSection({
           </div>
         </div>
       )}
-    </div>
+    </CollapsibleCard>
   );
 }
 

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { OM_HEADER_FIELDS, OM_NARRATIVE, formatOmDate, formatOmValue, fieldVisible, omJobType, omNarrative, sectionsFor, type OmField } from "@/lib/om-report";
 import OmReportForm, { type OmReportRow } from "./om-report-form";
+import CollapsibleCard from "./collapsible-card";
 import { deleteOmReport, getOmPhotoUrls } from "./om-report-actions";
 
 type Photo = { url: string; caption: string; key: string };
@@ -41,18 +42,19 @@ export default function OmReportSection({
   }
 
   return (
-    <div style={cardStyle}>
-      <div style={headStyle}>
-        <div>
-          <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase" }}>O&amp;M Field Reports</h3>
-          <p style={{ fontSize: "0.76rem", color: "var(--muted)", marginTop: 2 }}>Pick the kind of job and fill in only what applies to it.</p>
-        </div>
-        {!readOnly && (
+    <CollapsibleCard
+      storageKey={`om-${projectId}`}
+      title="O&M Field Reports"
+      subtitle="Pick the kind of job and fill in only what applies to it."
+      summary={sorted.length ? `${sorted.length} report${sorted.length === 1 ? "" : "s"}` : "none yet"}
+      actions={
+        !readOnly && (
           <button onClick={() => setShowForm((s) => !s)} style={addBtnStyle}>
             + New Report
           </button>
-        )}
-      </div>
+        )
+      }
+    >
 
       {showForm && !readOnly && <OmReportForm {...formProps} onDone={() => setShowForm(false)} />}
       {error && <p style={{ color: "var(--danger)", fontSize: "0.85rem", marginBottom: 10 }}>{error}</p>}
@@ -114,7 +116,7 @@ export default function OmReportSection({
       ) : (
         <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>No field reports yet.</p>
       )}
-    </div>
+    </CollapsibleCard>
   );
 }
 

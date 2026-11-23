@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import ScheduleForm from "../../calendar/schedule-form";
+import CollapsibleCard from "./collapsible-card";
 import { deleteScheduleRow } from "../../calendar/schedule-actions";
 
 export type SectionRow = { id: string; person: string; startDate: string; endDate: string; range: string; location: string | null; taskNumber: string | null; note: string | null; clash: string | null; past: boolean };
@@ -74,16 +75,19 @@ export default function ScheduleSection({ projectId, rows, names, taskNumbers, d
     );
 
   return (
-    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
-        <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase" }}>Schedule ({upcoming.length})</h3>
-        {!readOnly && !adding && (
+    <CollapsibleCard
+      storageKey={`crew-schedule-${projectId}`}
+      title={`Schedule (${upcoming.length})`}
+      subtitle="Who is going to this job, which days, and where. Hover the job on the Calendar to see it."
+      actions={
+        !readOnly &&
+        !adding && (
           <button onClick={() => setAdding(true)} style={{ ...smallBtn, background: "var(--rust)", color: "var(--rust-ink)", border: "none", padding: "7px 13px" }}>
             + Schedule someone
           </button>
-        )}
-      </div>
-      <p style={{ color: "var(--muted)", fontSize: "0.8rem", marginBottom: 10 }}>Who is going to this job, which days, and where. Hover the job on the Calendar to see it.</p>
+        )
+      }
+    >
       {adding && (
         <div style={{ marginBottom: 10 }}>
           <ScheduleForm projectId={projectId} names={names} taskNumbers={taskNumbers} defaultLocation={defaultLocation} onDone={() => setAdding(false)} />
@@ -98,7 +102,7 @@ export default function ScheduleSection({ projectId, rows, names, taskNumbers, d
           {past.map(line)}
         </details>
       )}
-    </div>
+    </CollapsibleCard>
   );
 }
 

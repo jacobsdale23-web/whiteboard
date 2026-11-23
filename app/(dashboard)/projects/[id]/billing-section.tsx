@@ -93,13 +93,10 @@ export default function BillingSection({
   return (
     <CollapsibleCard
       storageKey={`tm-billing-${projectId}`}
-      padding={20}
-      title={<span style={{ fontSize: "1.02rem", fontWeight: 700, textTransform: "uppercase", fontFamily: "var(--font-display)" }}>T&amp;M Billing</span>}
+      title="T&M Billing"
+      subtitle="🔒 Admin only — rates and invoice totals are never shown to field crew."
       summary={`${tmInvoices.length} invoice${tmInvoices.length === 1 ? "" : "s"} · $${tmInvoices.reduce((s, i) => s + Number(i.total), 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}`}
     >
-      <p style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: -8 }}>
-        🔒 Admin only — rates and invoice totals are never shown to field crew.
-      </p>
 
       <RatesSubsection projectId={projectId} rates={billingRates} />
       <TasksSubsection projectId={projectId} tasks={billingTasks} />

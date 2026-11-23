@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { addEquipmentTicket } from "./equipment-actions";
+import CollapsibleCard from "./collapsible-card";
 
 export default function EquipmentSection({ projectId }: { projectId: string }) {
   const [showForm, setShowForm] = useState(false);
@@ -28,14 +29,11 @@ export default function EquipmentSection({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div style={cardStyle}>
-      <div style={headStyle}>
-        <div>
-          <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase" }}>Equipment Issue</h3>
-          <p style={{ fontSize: "0.76rem", color: "var(--muted)", marginTop: 2 }}>
-            Optional — report broken equipment so the mechanics can get on it
-          </p>
-        </div>
+    <CollapsibleCard
+      storageKey={`equipment-${projectId}`}
+      title="Equipment Issue"
+      subtitle="Optional — report broken equipment so the mechanics can get on it"
+      actions={
         <button
           onClick={() => {
             setShowForm((s) => !s);
@@ -45,7 +43,8 @@ export default function EquipmentSection({ projectId }: { projectId: string }) {
         >
           + Report Equipment Issue
         </button>
-      </div>
+      }
+    >
 
       {sent && (
         <p style={{ color: "var(--active)", fontSize: "0.85rem", fontWeight: 600 }}>
@@ -96,7 +95,7 @@ export default function EquipmentSection({ projectId }: { projectId: string }) {
           </div>
         </form>
       )}
-    </div>
+    </CollapsibleCard>
   );
 }
 

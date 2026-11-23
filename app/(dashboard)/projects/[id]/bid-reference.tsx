@@ -5,6 +5,7 @@ import { opportunities, bidItems, estimateDetails, projects } from "@/lib/db/sch
 import { BID_CATEGORIES, bidItemTotal, computeEstimateSummary } from "@/lib/estimate";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
 import { attachBid, detachBid } from "./bid-actions";
+import CollapsibleCard from "./collapsible-card";
 
 const money = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
@@ -74,15 +75,13 @@ export default async function BidReference({ projectId, companyId }: { projectId
   ];
 
   return (
-    <div style={cardStyle}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-        <div>
-          <h3 style={{ ...headingStyle, marginBottom: 2 }}>Original Bid</h3>
-          <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>
-            {linked.jobName}
-            {details?.bidNumber ? ` · Bid #${details.bidNumber}` : ""}
-          </div>
-        </div>
+    <CollapsibleCard
+      storageKey={`bid-${projectId}`}
+      title="Original Bid"
+      subtitle={`${linked.jobName}${details?.bidNumber ? ` · Bid #${details.bidNumber}` : ""}`}
+      summary={awarded === null ? undefined : `${money(awarded)} awarded`}
+      marginTop={20}
+      actions={
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <Link href={`/opportunities/${linked.id}`} style={{ fontSize: "0.82rem", color: "var(--ink-soft)", textDecoration: "underline" }}>
             Open bid →
@@ -95,7 +94,8 @@ export default async function BidReference({ projectId, companyId }: { projectId
             </button>
           </form>
         </div>
-      </div>
+      }
+    >
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 12 }}>
         <Stat label="Awarded bid value" value={awarded === null ? "—" : money(awarded)} />
@@ -168,7 +168,7 @@ export default async function BidReference({ projectId, companyId }: { projectId
           )}
         </div>
       )}
-    </div>
+    </CollapsibleCard>
   );
 }
 

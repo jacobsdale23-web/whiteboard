@@ -11,6 +11,7 @@ import { downloadBase64 } from "@/lib/download-file";
 import { downloadQbInvoicePdf } from "./quickbooks-actions";
 import { qbInvoiceLink } from "@/lib/qb-invoice";
 import QbHelp from "./qb-help";
+import CollapsibleCard from "./collapsible-card";
 
 type CardLog = { id: string; date: string; foreman: string | null; description: string | null; scopeChange: boolean };
 
@@ -41,18 +42,18 @@ export default function QuoteCard({ projectId, customer, jobStatus, qb, quotes, 
   }
 
   return (
-    <div style={cardStyle}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
-        <div>
-          <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase" }}>Quote &amp; Billing</h3>
-          <p style={{ fontSize: "0.76rem", color: "var(--muted)", marginTop: 2 }}>
-            For jobs billed from a quote or our own proposal. Keep it here, check it against the daily logs, then bill it in QuickBooks.
-          </p>
-        </div>
+    <CollapsibleCard
+      storageKey={`quote-${projectId}`}
+      title="Quote & Billing"
+      subtitle="For jobs billed from a quote or our own proposal. Keep it here, check it against the daily logs, then bill it in QuickBooks."
+      summary={quotes.length ? `${quotes.length} quote${quotes.length === 1 ? "" : "s"}${unbilled.length ? ` · ${unbilled.length} not billed` : " · billed"}` : "no quote yet"}
+      marginBottom={20}
+      actions={
         <button onClick={() => setEditing("new")} style={addBtnStyle}>
           {quotes.length ? "+ Attach Another Quote" : "+ Attach Quote"}
         </button>
-      </div>
+      }
+    >
 
       {error && <p style={{ color: "var(--danger)", fontSize: "0.85rem", marginBottom: 10 }}>{error}</p>}
 
@@ -108,7 +109,7 @@ export default function QuoteCard({ projectId, customer, jobStatus, qb, quotes, 
       )}
 
       {editing && <QuoteModal projectId={projectId} customer={customer} quote={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
-    </div>
+    </CollapsibleCard>
   );
 }
 

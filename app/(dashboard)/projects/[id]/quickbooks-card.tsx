@@ -65,7 +65,8 @@ export default async function QuickBooksCard({
       // A job with a long invoice list starts folded up so the logs below stay in reach.
       defaultOpen={invoices.length <= 4}
       marginBottom={20}
-      title={<span style={{ fontSize: "1.02rem", fontWeight: 700, textTransform: "uppercase", fontFamily: "var(--font-display)" }}>QuickBooks{projectNumber ? ` · ${job.projectNumber}` : ""}</span>}
+      padding="18px 20px"
+      title={`QuickBooks${projectNumber ? ` · ${job.projectNumber}` : ""}`}
       summary={
         <>
           {money(qbIncome)} billed

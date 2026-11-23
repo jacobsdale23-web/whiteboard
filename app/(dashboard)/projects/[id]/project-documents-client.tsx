@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { PROJECT_FILE_KINDS, PROJECT_FILE_TYPES, MAX_PROJECT_FILE_MB } from "@/lib/project-files";
 import { requestProjectFileUpload, confirmProjectFileUpload, deleteProjectFile, getProjectFileDownloadUrl } from "./project-file-actions";
+import CollapsibleCard from "./collapsible-card";
 
 type ProjectFile = { id: string; kind: string; filename: string; fileSize: number; uploadedAt: string };
 
@@ -63,12 +64,13 @@ export default function ProjectDocumentsClient({ projectId, files }: { projectId
   }
 
   return (
-    <div style={cardStyle}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
-        <div>
-          <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase" }}>Contract &amp; Bid Documents</h3>
-          <p style={{ fontSize: "0.76rem", color: "var(--muted)", marginTop: 2 }}>The original bid, contract and change orders. PDF, Word, Excel or an image, up to {MAX_PROJECT_FILE_MB} MB.</p>
-        </div>
+    <CollapsibleCard
+      storageKey={`documents-${projectId}`}
+      title="Contract & Bid Documents"
+      subtitle={`The original bid, contract and change orders. PDF, Word, Excel or an image, up to ${MAX_PROJECT_FILE_MB} MB.`}
+      summary={files.length ? `${files.length} file${files.length === 1 ? "" : "s"}` : "none yet"}
+      marginTop={20}
+      actions={
         <form action={handleUpload} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <select value={kind} onChange={(e) => setKind(e.target.value)} style={inputStyle} aria-label="Kind of document">
             {PROJECT_FILE_KINDS.map((k) => (
@@ -82,7 +84,8 @@ export default function ProjectDocumentsClient({ projectId, files }: { projectId
             {uploading ? "Uploading…" : "Upload"}
           </button>
         </form>
-      </div>
+      }
+    >
 
       {error && <p style={{ color: "var(--danger)", fontSize: "0.85rem", marginBottom: 10 }}>{error}</p>}
 
@@ -117,7 +120,7 @@ export default function ProjectDocumentsClient({ projectId, files }: { projectId
       ) : (
         <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Nothing uploaded yet.</p>
       )}
-    </div>
+    </CollapsibleCard>
   );
 }
 

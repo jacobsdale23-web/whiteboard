@@ -7,6 +7,7 @@ import { getReceiptUrl, deleteReceipt } from "./receipt-actions";
 import PayAppModal, { type PayAppDraft } from "./payapp-modal";
 import GenerateFromLogs from "./production-billing";
 import SovSetupModal from "./sov-setup-modal";
+import CollapsibleCard from "./collapsible-card";
 import { sortedPayApps, rollupAt, itemStatsAt, type SovItemRow, type SovEntryRow, type PayAppRow } from "@/lib/sov";
 
 const CATEGORIES = ["Materials", "Subcontractor", "Equipment", "Other"];
@@ -82,8 +83,7 @@ export default function BudgetSection({
   const fallbackValue = contractValue !== null ? Number(contractValue) : null;
 
   return (
-    <div style={cardStyle}>
-      <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase", marginBottom: 14 }}>Budget</h3>
+    <CollapsibleCard storageKey={`budget-${projectId}`} title="Budget" summary={`Billed ${fmt(billedToDate)} · Cost ${fmt(totalCost)} · Margin ${fmt(margin)}`}>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px,1fr))", gap: 10, marginBottom: 18 }}>
         <Stat label="Contract Value" value={fmt(rollup ? rollup.contractPrice : fallbackValue)} />
@@ -253,7 +253,7 @@ export default function BudgetSection({
           }}
         />
       )}
-    </div>
+    </CollapsibleCard>
   );
 }
 

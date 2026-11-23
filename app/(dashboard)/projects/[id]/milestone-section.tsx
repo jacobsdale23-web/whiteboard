@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { addMilestone, deleteMilestone, toggleMilestone } from "./actions";
+import CollapsibleCard from "./collapsible-card";
 
 type Milestone = { id: string; name: string; date: string | null; done: boolean };
 
@@ -11,15 +12,18 @@ export default function MilestoneSection({ projectId, milestones, readOnly = fal
   const sorted = milestones.slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
 
   return (
-    <div style={cardStyle}>
-      <div style={headStyle}>
-        <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase" }}>Schedule</h3>
-        {!readOnly && (
+    <CollapsibleCard
+      storageKey={`milestones-${projectId}`}
+      title="Schedule"
+      summary={sorted.length ? `${sorted.filter((m) => m.done).length} of ${sorted.length} done` : "none yet"}
+      actions={
+        !readOnly && (
           <button onClick={() => setShowForm((s) => !s)} style={addBtnStyle}>
             + Add Milestone
           </button>
-        )}
-      </div>
+        )
+      }
+    >
 
       {showForm && !readOnly && (
         <form
@@ -71,7 +75,7 @@ export default function MilestoneSection({ projectId, milestones, readOnly = fal
       ) : (
         <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>No milestones yet.</p>
       )}
-    </div>
+    </CollapsibleCard>
   );
 }
 

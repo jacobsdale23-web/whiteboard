@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { addJsa, deleteJsa, acknowledgeJsa } from "./jsa-actions";
+import CollapsibleCard from "./collapsible-card";
 import { improveDescription } from "./ai-actions";
 import { TASK_TYPES, PPE_ITEMS, HAZARD_LIBRARY } from "@/lib/jsa-library";
 
@@ -95,18 +96,19 @@ export default function JsaSection({
   }
 
   return (
-    <div style={cardStyle}>
-      <div style={headStyle}>
-        <div>
-          <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase" }}>Daily JSA</h3>
-          <p style={{ fontSize: "0.76rem", color: "var(--muted)", marginTop: 2 }}>Job Safety Analysis — complete before work starts</p>
-        </div>
-        {!readOnly && (
+    <CollapsibleCard
+      storageKey={`jsa-${projectId}`}
+      title="Daily JSA"
+      subtitle="Job Safety Analysis — complete before work starts"
+      summary={sorted.length ? `${sorted.length} submitted` : "none yet"}
+      actions={
+        !readOnly && (
           <button onClick={() => setShowForm((s) => !s)} style={addBtnStyle}>
             + New JSA
           </button>
-        )}
-      </div>
+        )
+      }
+    >
 
       {showForm && !readOnly && (
         <form
@@ -277,7 +279,7 @@ export default function JsaSection({
       ) : (
         <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>No JSAs submitted yet.</p>
       )}
-    </div>
+    </CollapsibleCard>
   );
 }
 
