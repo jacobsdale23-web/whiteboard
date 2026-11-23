@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { qbJobs, qbInvoices } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
+import CollapsibleCard from "./collapsible-card";
 
 const money = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
@@ -59,14 +60,21 @@ export default async function QuickBooksCard({
   const synced = job.syncedAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Chicago" });
 
   return (
-    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "18px 20px", marginBottom: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-        <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase" }}>QuickBooks{projectNumber ? ` · ${job.projectNumber}` : ""}</h3>
-        <span style={{ color: "var(--muted)", fontSize: "0.78rem" }}>
-          {job.status ? `${job.status} in QuickBooks · ` : ""}synced {synced}
-        </span>
-      </div>
-
+    <CollapsibleCard
+      storageKey={`qb-${companyId}-${key}`}
+      // A job with a long invoice list starts folded up so the logs below stay in reach.
+      defaultOpen={invoices.length <= 4}
+      marginBottom={20}
+      title={<span style={{ fontSize: "1.02rem", fontWeight: 700, textTransform: "uppercase", fontFamily: "var(--font-display)" }}>QuickBooks{projectNumber ? ` · ${job.projectNumber}` : ""}</span>}
+      summary={
+        <>
+          {money(qbIncome)} billed
+          {invoices.length > 0 ? ` · ${invoices.length} invoice${invoices.length === 1 ? "" : "s"}${unpaid > 0.005 ? ` · ${money(unpaid)} unpaid` : ""}` : ""}
+          {" · "}
+          {job.status ? `${job.status} · ` : ""}synced {synced}
+        </>
+      }
+    >
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.88rem" }}>
           <thead>
@@ -141,7 +149,7 @@ export default async function QuickBooksCard({
       <p style={{ color: "var(--muted)", fontSize: "0.74rem", marginTop: 8 }}>
         QuickBooks costs are payroll-based and may be incomplete. White Board counts pay apps, receipts, expenses and vendor invoices recorded here (its income shows only when the job has pay apps). The two can differ; neither overwrites the other.
       </p>
-    </div>
+    </CollapsibleCard>
   );
 }
 

@@ -22,6 +22,7 @@ import {
 } from "./billing-actions";
 import { sendInvoiceToQuickBooks, disconnectQuickBooks, downloadQbInvoicePdf } from "./quickbooks-actions";
 import QbHelp from "./qb-help";
+import CollapsibleCard from "./collapsible-card";
 import { openLater } from "@/lib/open-later";
 import { downloadBase64 } from "@/lib/download-file";
 import { qbInvoiceLink } from "@/lib/qb-invoice";
@@ -90,16 +91,20 @@ export default function BillingSection({
   qb: QbStatus;
 }) {
   return (
-    <div style={cardStyle}>
-      <h3 style={{ fontSize: "1.02rem", textTransform: "uppercase", marginBottom: 4 }}>T&amp;M Billing</h3>
-      <p style={{ fontSize: "0.78rem", color: "var(--muted)", marginBottom: 16 }}>
+    <CollapsibleCard
+      storageKey={`tm-billing-${projectId}`}
+      padding={20}
+      title={<span style={{ fontSize: "1.02rem", fontWeight: 700, textTransform: "uppercase", fontFamily: "var(--font-display)" }}>T&amp;M Billing</span>}
+      summary={`${tmInvoices.length} invoice${tmInvoices.length === 1 ? "" : "s"} · $${tmInvoices.reduce((s, i) => s + Number(i.total), 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}`}
+    >
+      <p style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: -8 }}>
         🔒 Admin only — rates and invoice totals are never shown to field crew.
       </p>
 
       <RatesSubsection projectId={projectId} rates={billingRates} />
       <TasksSubsection projectId={projectId} tasks={billingTasks} />
       <InvoicesSubsection projectId={projectId} tasks={billingTasks} invoices={tmInvoices} qb={qb} />
-    </div>
+    </CollapsibleCard>
   );
 }
 
