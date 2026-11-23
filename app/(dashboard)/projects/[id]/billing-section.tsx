@@ -8,6 +8,7 @@ import {
   applyRateSchedule,
   addBillingTask,
   deleteBillingTask,
+  setTaskClosed,
   generateInvoice,
   approveInvoice,
   deleteTmInvoice,
@@ -40,6 +41,7 @@ type BillingTask = {
   contractCoordinator: string | null;
   billToName: string | null;
   billToAddress: string | null;
+  closed: boolean;
 };
 type TmLineItem = {
   date: string;
@@ -247,20 +249,32 @@ function TasksSubsection({ projectId, tasks }: { projectId: string; tasks: Billi
       {tasks.length ? (
         tasks.map((t) => (
           <div key={t.id} style={rowStyle}>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: "0.87rem" }}>{t.taskNumber}</div>
+            <div style={t.closed ? { opacity: 0.6 } : undefined}>
+              <div style={{ fontWeight: 600, fontSize: "0.87rem" }}>
+                {t.taskNumber}
+                {t.closed && <span style={{ marginLeft: 8, fontSize: "0.68rem", textTransform: "uppercase", color: "var(--muted)" }}>closed</span>}
+              </div>
               <div style={{ fontSize: "0.76rem", color: "var(--muted)" }}>{t.projectName || "—"}</div>
             </div>
-            <button
-              onClick={() => {
-                if (confirm(`Delete task ${t.taskNumber}? Existing invoices for it are kept.`)) {
-                  startTransition(() => deleteBillingTask(projectId, t.id));
-                }
-              }}
-              style={deleteBtnStyle}
-            >
-              🗑
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button
+                onClick={() => startTransition(() => setTaskClosed(projectId, t.id, !t.closed))}
+                style={addBtnStyle}
+                title={t.closed ? "Offer this task request to foremen again" : "Finished: stop offering this task request to foremen (logs and invoices stay)"}
+              >
+                {t.closed ? "Reopen" : "Close"}
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm(`Delete task ${t.taskNumber}? Existing invoices for it are kept.`)) {
+                    startTransition(() => deleteBillingTask(projectId, t.id));
+                  }
+                }}
+                style={deleteBtnStyle}
+              >
+                🗑
+              </button>
+            </div>
           </div>
         ))
       ) : (

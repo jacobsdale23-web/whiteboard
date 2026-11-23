@@ -73,7 +73,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     db.select().from(lineItems).where(eq(lineItems.projectId, id)),
     db.select().from(jsaForms).where(eq(jsaForms.projectId, id)),
     db.select().from(leakNumbers).where(eq(leakNumbers.projectId, id)),
-    db.select({ taskNumber: billingTasks.taskNumber }).from(billingTasks).where(eq(billingTasks.projectId, id)),
+    db.select({ taskNumber: billingTasks.taskNumber, closed: billingTasks.closed }).from(billingTasks).where(eq(billingTasks.projectId, id)),
     isOm ? db.select().from(omReports).where(eq(omReports.projectId, id)) : Promise.resolve([] as typeof omReports.$inferSelect[]),
     // Last day of daily logs already billed on a pay application (everyone sees the date, not the money).
     isTm ? Promise.resolve([] as { logTo: string | null }[]) : db.select({ logTo: payApps.logTo }).from(payApps).where(eq(payApps.projectId, id)),
@@ -410,9 +410,12 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         logs={projectLogs}
         lineItems={projectLineItems}
         leakNumbers={projectLeakNumbers
-          .map((l) => ({ value: l.leakNumber, label: l.address ? `${l.leakNumber} — ${l.address}` : l.leakNumber }))
+          .map((l) => ({ value: l.leakNumber, label: l.address ? `${l.leakNumber} — ${l.address}` : l.leakNumber, task: l.taskNumber }))
           .sort((a, b) => b.value.localeCompare(a.value, undefined, { numeric: true }))}
-        taskNumbers={projectTaskNumbers.map((t) => t.taskNumber).sort()}
+        taskNumbers={projectTaskNumbers.filter((t) => !t.closed).map((t) => t.taskNumber).sort()}
+        closedTaskNumbers={projectTaskNumbers.filter((t) => t.closed).map((t) => t.taskNumber).sort()}
+        // A job with several task requests (one Atmos job for all of them): foremen pick their task request before seeing logs.
+        multiTask={projectTaskNumbers.length >= 2}
         people={people.names}
         usualCrews={people.usualCrews}
         isAdmin={isAdmin}

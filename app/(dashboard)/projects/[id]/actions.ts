@@ -92,7 +92,7 @@ async function prepareLog(project: { id: string; companyId: string; billingType:
 
   if (leakNumber !== "N/A") {
     const known = await db.select().from(leakNumbers).where(and(eq(leakNumbers.projectId, projectId), eq(leakNumbers.leakNumber, leakNumber)));
-    if (!known.length) await db.insert(leakNumbers).values({ id: randomUUID(), projectId, leakNumber, address });
+    if (!known.length) await db.insert(leakNumbers).values({ id: randomUUID(), projectId, leakNumber, address, taskNumber });
   }
   if (taskNumber) {
     const known = await db.select().from(billingTasks).where(and(eq(billingTasks.projectId, projectId), eq(billingTasks.taskNumber, taskNumber)));

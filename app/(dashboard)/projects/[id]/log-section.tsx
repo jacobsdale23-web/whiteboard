@@ -29,12 +29,15 @@ type LogEntry = {
   editedBy: string | null;
 };
 type LineItem = { itemNo: string; description: string | null; unit: string | null };
-type Choice = { value: string; label: string };
+// `task`: the task request a leak number belongs to, on a job that holds several (none = offered under every task).
+type Choice = { value: string; label: string; task?: string | null };
 type CrewRow = { key: number; name: string; position: string; hours: string };
 type QtyRow = { key: number; itemNo: string; qty: string };
 type PhotoDraft = { key: string; caption: string; previewUrl?: string; isNew?: boolean };
 
 const today = () => new Date().toISOString().slice(0, 10);
+const localDay = () => new Date().toLocaleDateString("en-CA"); // the crew's own calendar day, not UTC
+const NO_TASK = "__none__";
 
 function PickOrAdd({
   name,
@@ -78,6 +81,8 @@ function LogForm({
   lineItems,
   leakNumbers,
   taskNumbers,
+  lockedTask,
+  defaultTask,
   people,
   usualCrews,
   production,
@@ -90,6 +95,10 @@ function LogForm({
   lineItems: LineItem[];
   leakNumbers: Choice[];
   taskNumbers: string[];
+  // A foreman who already picked their task request: it is fixed for the new log.
+  lockedTask?: string;
+  // The task request being worked on (an admin's filter): preselected, not fixed.
+  defaultTask?: string;
   people: string[];
   usualCrews: Record<string, string[]>;
   production: boolean;
@@ -98,6 +107,9 @@ function LogForm({
   onDone: () => void;
 }) {
   const editing = !!initial;
+  // Leak numbers for this task request (plus ones not tied to any task); everything when no task is in play.
+  const activeTask = initial ? initial.taskNumber || undefined : lockedTask ?? defaultTask;
+  const leakChoices = activeTask ? leakNumbers.filter((l) => !l.task || l.task === activeTask) : leakNumbers;
   const listId = useId();
   const [date, setDate] = useState(initial?.date || today());
   const [qtyRows, setQtyRows] = useState<QtyRow[]>((initial?.quantities || []).map((q, i) => ({ key: i, itemNo: q.itemNo, qty: String(q.qty) })));
@@ -237,7 +249,7 @@ function LogForm({
         <input type="date" name="date" required style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
       </Field>
       <Field label="Leak Number">
-        <PickOrAdd name="leakNumber" options={leakNumbers} noneLabel="N/A" noneValue="N/A" newPlaceholder="New leak number" initial={initial?.leakNumber} />
+        <PickOrAdd name="leakNumber" options={leakChoices} noneLabel="N/A" noneValue="N/A" newPlaceholder="New leak number" initial={initial?.leakNumber} />
       </Field>
       <datalist id={listId}>
         {people.map((n) => (
@@ -259,14 +271,21 @@ function LogForm({
       </Field>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Field label="Task / Project Number">
-          <PickOrAdd
-            name="taskNumber"
-            options={taskNumbers.map((t) => ({ value: t, label: t }))}
-            noneLabel="— None —"
-            noneValue=""
-            newPlaceholder="New task number, e.g. 070.58526"
-            initial={initial ? initial.taskNumber || undefined : taskNumbers.length === 1 ? taskNumbers[0] : undefined}
-          />
+          {lockedTask && !initial ? (
+            <>
+              <input type="hidden" name="taskNumber" value={lockedTask} />
+              <input type="text" value={lockedTask} readOnly aria-label="Task request" style={{ ...inputStyle, background: "var(--surface-2)" }} />
+            </>
+          ) : (
+            <PickOrAdd
+              name="taskNumber"
+              options={taskNumbers.map((t) => ({ value: t, label: t }))}
+              noneLabel="— None —"
+              noneValue=""
+              newPlaceholder="New task number, e.g. 070.58526"
+              initial={initial ? initial.taskNumber || undefined : defaultTask ?? (taskNumbers.length === 1 ? taskNumbers[0] : undefined)}
+            />
+          )}
         </Field>
         <Field label="Locusview Number">
           <input type="text" name="locusviewNumber" style={inputStyle} defaultValue={initial?.locusviewNumber || ""} />
@@ -519,6 +538,8 @@ export default function LogSection({
   lineItems,
   leakNumbers,
   taskNumbers,
+  closedTaskNumbers,
+  multiTask,
   people,
   usualCrews,
   isAdmin,
@@ -531,7 +552,11 @@ export default function LogSection({
   logs: LogEntry[];
   lineItems: LineItem[];
   leakNumbers: Choice[];
+  // Open task requests (offered in the form), and finished ones (kept for the office's filter).
   taskNumbers: string[];
+  closedTaskNumbers: string[];
+  // The job holds several task requests: foremen pick one before they see any logs; the office gets a filter.
+  multiTask: boolean;
   people: string[];
   usualCrews: Record<string, string[]>;
   isAdmin: boolean;
@@ -549,8 +574,53 @@ export default function LogSection({
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [, startTransition] = useTransition();
-  const sorted = logs.slice().sort((a, b) => b.date.localeCompare(a.date));
-  const formProps = { projectId, lineItems, leakNumbers, taskNumbers, people, usualCrews, production, billedThrough, hasQuote };
+
+  // Task requests: a foreman picks the one they work under today and sees only its logs; the office can filter.
+  const pickMode = multiTask && !isAdmin;
+  const taskKey = `wb-task-${projectId}`;
+  const [task, setTask] = useState(""); // "" = none picked (foreman) / all (office); NO_TASK = logs with no task number
+  const [taskLoaded, setTaskLoaded] = useState(false);
+  const [typedTask, setTypedTask] = useState("");
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(taskKey) || "null");
+      if (pickMode && saved && saved.day === localDay() && typeof saved.task === "string") setTask(saved.task);
+    } catch {
+      // storage blocked: they just pick again
+    }
+    setTaskLoaded(true);
+  }, [taskKey, pickMode]);
+  function chooseTask(t: string) {
+    setTask(t);
+    setShowForm(false);
+    setEditingId(null);
+    setSelected([]);
+    if (pickMode) {
+      try {
+        localStorage.setItem(taskKey, JSON.stringify({ task: t, day: localDay() }));
+      } catch {
+        // not remembered, still works
+      }
+    }
+  }
+  const taskCounts = new Map<string, number>();
+  for (const l of logs) taskCounts.set(l.taskNumber || NO_TASK, (taskCounts.get(l.taskNumber || NO_TASK) || 0) + 1);
+  const visible = pickMode ? (task ? logs.filter((l) => l.taskNumber === task) : []) : multiTask && task ? logs.filter((l) => (task === NO_TASK ? !l.taskNumber : l.taskNumber === task)) : logs;
+  const sorted = visible.slice().sort((a, b) => b.date.localeCompare(a.date));
+  const needsPick = pickMode && !task;
+  const formProps = {
+    projectId,
+    lineItems,
+    leakNumbers,
+    taskNumbers,
+    lockedTask: pickMode && task ? task : undefined,
+    defaultTask: !pickMode && task && task !== NO_TASK ? task : undefined,
+    people,
+    usualCrews,
+    production,
+    billedThrough,
+    hasQuote,
+  };
 
   const pdfUrl = (qs: string) => `/projects/${projectId}/logs-pdf?${qs}`;
   const allSelected = sorted.length > 0 && selected.length === sorted.length;
@@ -560,9 +630,10 @@ export default function LogSection({
     <CollapsibleCard
       storageKey={`logs-${projectId}`}
       title="Daily Logs"
-      summary={sorted.length ? `${sorted.length} log${sorted.length === 1 ? "" : "s"} · latest ${sorted[0].date}` : "none yet"}
+      summary={needsPick ? "pick your task request" : sorted.length ? `${sorted.length} log${sorted.length === 1 ? "" : "s"} · latest ${sorted[0].date}` : "none yet"}
       actions={
-        !readOnly && (
+        !readOnly &&
+        !needsPick && (
           <button onClick={() => setShowForm((s) => !s)} style={addBtnStyle}>
             + Add Entry
           </button>
@@ -570,7 +641,64 @@ export default function LogSection({
       }
     >
 
-      {showForm && !readOnly && <LogForm {...formProps} onDone={() => setShowForm(false)} />}
+      {pickMode && taskLoaded && needsPick && (
+        <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 14, marginBottom: 12, background: "var(--surface-2)" }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Which task request are you working under today?</div>
+          <p style={{ color: "var(--muted)", fontSize: "0.8rem", marginBottom: 10 }}>Pick it and the daily logs for that task request will show up.</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            {taskNumbers.map((t) => (
+              <button key={t} onClick={() => chooseTask(t)} style={{ ...addBtnStyle, padding: "14px 18px", fontSize: "1rem", minHeight: 48 }}>
+                {t}
+                <span style={{ display: "block", fontSize: "0.7rem", fontWeight: 500, color: "var(--muted)" }}>
+                  {taskCounts.get(t) || 0} log{(taskCounts.get(t) || 0) === 1 ? "" : "s"}
+                </span>
+              </button>
+            ))}
+          </div>
+          {!readOnly && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const t = typedTask.trim();
+                if (t) chooseTask(t);
+              }}
+              style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12, alignItems: "center" }}
+            >
+              <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>Not in the list?</span>
+              <input value={typedTask} onChange={(e) => setTypedTask(e.target.value)} placeholder="Type the task request, e.g. 070.58526" style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
+              <button type="submit" disabled={!typedTask.trim()} style={{ ...addBtnStyle, opacity: typedTask.trim() ? 1 : 0.5 }}>
+                Use this one
+              </button>
+            </form>
+          )}
+        </div>
+      )}
+      {pickMode && !needsPick && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 12, fontSize: "0.88rem" }}>
+          <span style={{ color: "var(--muted)" }}>Task request:</span>
+          <strong>{task}</strong>
+          <button onClick={() => chooseTask("")} style={addBtnStyle}>
+            Change
+          </button>
+        </div>
+      )}
+      {multiTask && isAdmin && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 12, fontSize: "0.82rem" }}>
+          <span style={{ color: "var(--muted)" }}>Show task request:</span>
+          <select value={task} onChange={(e) => chooseTask(e.target.value)} style={{ ...inputStyle, width: "auto", padding: "6px 10px" }}>
+            <option value="">All task requests ({logs.length})</option>
+            {[...taskNumbers, ...closedTaskNumbers].map((t) => (
+              <option key={t} value={t}>
+                {t}
+                {closedTaskNumbers.includes(t) ? " (closed)" : ""} ({taskCounts.get(t) || 0})
+              </option>
+            ))}
+            {!!taskCounts.get(NO_TASK) && <option value={NO_TASK}>No task number ({taskCounts.get(NO_TASK)})</option>}
+          </select>
+        </div>
+      )}
+
+      {showForm && !readOnly && !needsPick && <LogForm {...formProps} onDone={() => setShowForm(false)} />}
 
       {isAdmin && sorted.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", background: "var(--surface-2)", borderRadius: 8, padding: "10px 12px", marginBottom: 10, fontSize: "0.8rem" }}>
@@ -685,8 +813,8 @@ export default function LogSection({
             </div>
           );
         })
-      ) : (
-        <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>No daily logs yet.</p>
+      ) : needsPick ? null : (
+        <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>{multiTask && task ? "No daily logs for this task request yet." : "No daily logs yet."}</p>
       )}
     </CollapsibleCard>
   );

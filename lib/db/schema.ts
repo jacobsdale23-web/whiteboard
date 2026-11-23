@@ -232,6 +232,8 @@ export const leakNumbers = pgTable("leak_numbers", {
   projectId: text("project_id").notNull(),
   leakNumber: text("leak_number").notNull(),
   address: text("address"),
+  // The task request this leak belongs to, on jobs that hold several (null = shown under every task).
+  taskNumber: text("task_number"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -246,6 +248,8 @@ export const billingTasks = pgTable("billing_tasks", {
   contractCoordinator: text("contract_coordinator"),
   billToName: text("bill_to_name"),
   billToAddress: text("bill_to_address"),
+  // A finished task request: no longer offered to foremen, but its logs and invoices stay.
+  closed: boolean("closed").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -66,6 +66,13 @@ export async function addBillingTask(projectId: string, formData: FormData) {
   revalidatePath(`/projects/${projectId}`);
 }
 
+// A finished task request drops out of the foremen's list; its logs and invoices stay.
+export async function setTaskClosed(projectId: string, id: string, closed: boolean) {
+  await requireAdmin();
+  await db.update(billingTasks).set({ closed }).where(and(eq(billingTasks.id, id), eq(billingTasks.projectId, projectId)));
+  revalidatePath(`/projects/${projectId}`);
+}
+
 export async function deleteBillingTask(projectId: string, id: string) {
   await requireAdmin();
   await db.delete(billingTasks).where(eq(billingTasks.id, id));
@@ -89,9 +96,14 @@ async function computeWarnings(projectId: string, taskNumber: string, periodStar
     companyId ? db.select({ name: hrEmployees.name }).from(hrEmployees).where(eq(hrEmployees.companyId, companyId)) : Promise.resolve([]),
   ]);
   const projectNameById = new Map(allProjects.map((p) => [p.id, p.name]));
+  // Other jobs' logs, plus this job's logs under a different task request (a person can't be on two crews at once).
   const otherLogs = periodLogs
-    .filter((l) => l.projectId !== projectId && projectNameById.has(l.projectId))
-    .map((l) => ({ projectId: l.projectId, projectName: projectNameById.get(l.projectId) || l.projectId, date: l.date, crew: l.crew }));
+    .filter((l) => projectNameById.has(l.projectId) && (l.projectId !== projectId || l.taskNumber !== taskNumber))
+    .map((l) =>
+      l.projectId === projectId
+        ? { projectId: l.projectId, projectName: `task ${l.taskNumber || "(none)"}`, date: l.date, crew: l.crew, otherTask: true }
+        : { projectId: l.projectId, projectName: projectNameById.get(l.projectId) || l.projectId, date: l.date, crew: l.crew }
+    );
 
   const taskLogs = periodLogs.filter((l) => l.projectId === projectId && l.taskNumber === taskNumber);
   const quality = screenInvoiceQuality(
