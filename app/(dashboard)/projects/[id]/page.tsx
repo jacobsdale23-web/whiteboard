@@ -352,6 +352,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             billingTasks={billingData.billingTasks}
             tmInvoices={billingData.tmInvoices}
             qb={qbStatus}
+            siteLinesDefault={!/atmos/i.test(project.customer || "")}
           />
         </div>
       )}

@@ -7,7 +7,7 @@ import { billingTasks, projectQuotes, tmInvoices } from "@/lib/db/schema";
 import { getSessionAndProfile } from "@/lib/auth/current-user";
 import { requireProject } from "@/lib/auth/company";
 import { disconnect, findJobCustomer, getConnection, nextInvoiceNumber, qbApi, qbAttach, qbConfig, qbInvoicePdf, qbQuery, QbError } from "@/lib/quickbooks";
-import { buildCustomerMemo, buildQbLines, qbInvoiceLink } from "@/lib/qb-invoice";
+import { buildCustomerMemo, buildQbLines, qbInvoiceLink, type QbLine } from "@/lib/qb-invoice";
 import { exportInvoiceExcel } from "./billing-actions";
 
 async function requireQbAdmin(projectId: string) {
@@ -19,9 +19,58 @@ async function requireQbAdmin(projectId: string) {
 
 export type SendResult = { error?: string; docNumber?: string; note?: string; link?: string };
 
-// Creates this approved invoice in QuickBooks (saved there, not emailed) with the short "Per Man / Per Welder" lines and
-// the task details on top, attaches the Excel backup, and remembers where it went.
-export async function sendInvoiceToQuickBooks(projectId: string, invoiceId: string): Promise<SendResult> {
+const salesLines = (lines: QbLine[], item: { value: string; name?: string }) =>
+  lines.map((l) => ({
+    DetailType: "SalesItemLineDetail",
+    Amount: l.amount,
+    Description: l.description,
+    SalesItemLineDetail: { ItemRef: item, Qty: l.qty, UnitPrice: l.rate, TaxCodeRef: { value: "NON" } },
+  }));
+
+type QbInvoiceRecord = {
+  Id: string;
+  SyncToken: string;
+  DocNumber?: string;
+  TotalAmt?: number;
+  Line?: { DetailType?: string; SalesItemLineDetail?: { ItemRef?: { value: string; name?: string } } }[];
+};
+
+// Rewrites the lines of an invoice White Board already created in QuickBooks (by job site, or back to by rate). The
+// total never changes: if QuickBooks shows a different total (someone edited it there), nothing is written.
+export async function updateQbInvoiceLines(projectId: string, invoiceId: string, bySite: boolean): Promise<SendResult> {
+  try {
+    const { project } = await requireQbAdmin(projectId);
+    const companyId = project.companyId;
+    const conn = await getConnection(companyId);
+    if (!conn) return { error: "QuickBooks isn't connected for this company. Use Connect QuickBooks first." };
+
+    const [invoice] = await db.select().from(tmInvoices).where(and(eq(tmInvoices.id, invoiceId), eq(tmInvoices.projectId, projectId)));
+    if (!invoice?.qbInvoiceId) return { error: "This invoice isn't in QuickBooks yet." };
+
+    const built = buildQbLines(invoice.lineItems || [], Number(invoice.total), { bySite });
+    if ("error" in built) return { error: built.error };
+
+    const current = (await qbApi<{ Invoice?: QbInvoiceRecord }>(companyId, "GET", `/invoice/${encodeURIComponent(invoice.qbInvoiceId)}`)).Invoice;
+    if (!current?.Id) return { error: "Couldn't find that invoice in QuickBooks." };
+    if (Math.abs(Number(current.TotalAmt) - Number(invoice.total)) > 0.005) {
+      return { error: `QuickBooks shows $${Number(current.TotalAmt).toFixed(2)} for this invoice but White Board has $${Number(invoice.total).toFixed(2)}. It looks changed in QuickBooks, so nothing was updated.` };
+    }
+    const item = current.Line?.find((l) => l.DetailType === "SalesItemLineDetail")?.SalesItemLineDetail?.ItemRef;
+    if (!item) return { error: "Couldn't read the product on the QuickBooks invoice, so nothing was updated." };
+
+    // A sparse update replaces only the lines; customer, number, memo and attachments stay as they are.
+    await qbApi(companyId, "POST", "/invoice", { Id: current.Id, SyncToken: current.SyncToken, sparse: true, Line: salesLines(built.lines, item) });
+    revalidatePath(`/projects/${projectId}`);
+    return { docNumber: current.DocNumber, note: `QuickBooks invoice ${current.DocNumber || ""} now has ${built.lines.length} line${built.lines.length === 1 ? "" : "s"}. If you already downloaded or emailed the PDF, download it again.`, link: qbInvoiceLink(conn.realmId, current.Id) };
+  } catch (e) {
+    if (e instanceof QbError) return { error: e.message };
+    return { error: "Something went wrong updating this in QuickBooks. Check the invoice there before trying again." };
+  }
+}
+
+// Creates this approved invoice in QuickBooks (saved there, not emailed) with the "Per Man / Per Welder" lines (by rate,
+// or broken out by job site) and the task details on top, attaches the Excel backup, and remembers where it went.
+export async function sendInvoiceToQuickBooks(projectId: string, invoiceId: string, bySite = false): Promise<SendResult> {
   try {
     const { project, name } = await requireQbAdmin(projectId);
     const companyId = project.companyId;
@@ -35,7 +84,7 @@ export async function sendInvoiceToQuickBooks(projectId: string, invoiceId: stri
     if (invoice.qbInvoiceId) return { error: "This invoice was already sent to QuickBooks." };
     const [task] = await db.select().from(billingTasks).where(eq(billingTasks.id, invoice.billingTaskId));
 
-    const built = buildQbLines(invoice.lineItems || [], Number(invoice.total));
+    const built = buildQbLines(invoice.lineItems || [], Number(invoice.total), { bySite });
     if ("error" in built) return { error: built.error };
 
     const customer = await findJobCustomer(companyId, project.projectNumber, task?.billToName ?? null);
@@ -52,12 +101,7 @@ export async function sendInvoiceToQuickBooks(projectId: string, invoiceId: stri
       TxnDate: today,
       CustomerMemo: { value: buildCustomerMemo(task, invoice.periodStart, invoice.periodEnd) },
       PrivateNote: `From White Board: T&M invoice ${task?.taskNumber || ""} ${invoice.periodStart} to ${invoice.periodEnd}`.trim(),
-      Line: built.lines.map((l) => ({
-        DetailType: "SalesItemLineDetail",
-        Amount: l.amount,
-        Description: l.description,
-        SalesItemLineDetail: { ItemRef: { value: items[0].Id, name: items[0].Name }, Qty: l.qty, UnitPrice: l.rate, TaxCodeRef: { value: "NON" } },
-      })),
+      Line: salesLines(built.lines, { value: items[0].Id, name: items[0].Name }),
     };
     const created = await qbApi<{ Invoice?: { Id: string; DocNumber?: string; TotalAmt?: number } }>(companyId, "POST", "/invoice", payload);
     const qbInv = created.Invoice;

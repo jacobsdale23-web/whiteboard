@@ -21,12 +21,12 @@ import {
   acknowledgeWarnings,
   unacknowledgeWarning,
 } from "./billing-actions";
-import { sendInvoiceToQuickBooks, disconnectQuickBooks, downloadQbInvoicePdf } from "./quickbooks-actions";
+import { sendInvoiceToQuickBooks, updateQbInvoiceLines, disconnectQuickBooks, downloadQbInvoicePdf } from "./quickbooks-actions";
 import QbHelp from "./qb-help";
 import CollapsibleCard from "./collapsible-card";
 import { openLater } from "@/lib/open-later";
 import { downloadBase64 } from "@/lib/download-file";
-import { qbInvoiceLink } from "@/lib/qb-invoice";
+import { buildQbLines, qbInvoiceLink, siteCount } from "@/lib/qb-invoice";
 
 // Whether White Board can send invoices to this company's QuickBooks.
 export type QbStatus = { configured: boolean; connected: boolean; companyName: string | null; realmId: string | null };
@@ -85,12 +85,15 @@ export default function BillingSection({
   billingTasks,
   tmInvoices,
   qb,
+  siteLinesDefault,
 }: {
   projectId: string;
   billingRates: BillingRate[];
   billingTasks: BillingTask[];
   tmInvoices: TmInvoice[];
   qb: QbStatus;
+  // Whether QuickBooks lines are broken out by job site unless unticked (third-party customers; Atmos gets the short version).
+  siteLinesDefault: boolean;
 }) {
   return (
     <CollapsibleCard
@@ -102,7 +105,7 @@ export default function BillingSection({
 
       <RatesSubsection projectId={projectId} rates={billingRates} />
       <TasksSubsection projectId={projectId} tasks={billingTasks} />
-      <InvoicesSubsection projectId={projectId} tasks={billingTasks} invoices={tmInvoices} qb={qb} />
+      <InvoicesSubsection projectId={projectId} tasks={billingTasks} invoices={tmInvoices} qb={qb} siteLinesDefault={siteLinesDefault} />
     </CollapsibleCard>
   );
 }
@@ -292,11 +295,13 @@ function InvoicesSubsection({
   tasks,
   invoices,
   qb,
+  siteLinesDefault,
 }: {
   projectId: string;
   tasks: BillingTask[];
   invoices: TmInvoice[];
   qb: QbStatus;
+  siteLinesDefault: boolean;
 }) {
   const [showGen, setShowGen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -374,7 +379,7 @@ function InvoicesSubsection({
         invoices
           .slice()
           .sort((a, b) => b.periodEnd.localeCompare(a.periodEnd))
-          .map((inv) => <InvoiceCard key={inv.id} projectId={projectId} invoice={inv} tasks={tasks} qb={qb} />)
+          .map((inv) => <InvoiceCard key={inv.id} projectId={projectId} invoice={inv} tasks={tasks} qb={qb} siteLinesDefault={siteLinesDefault} />)
       ) : (
         <Empty>No invoices generated yet.</Empty>
       )}
@@ -382,7 +387,36 @@ function InvoicesSubsection({
   );
 }
 
-function InvoiceCard({ projectId, invoice, tasks, qb }: { projectId: string; invoice: TmInvoice; tasks: BillingTask[]; qb: QbStatus }) {
+function InvoiceCard({ projectId, invoice, tasks, qb, siteLinesDefault }: { projectId: string; invoice: TmInvoice; tasks: BillingTask[]; qb: QbStatus; siteLinesDefault: boolean }) {
+  const sites = siteCount(invoice.lineItems || []);
+  const [bySite, setBySite] = useState(siteLinesDefault);
+  const [confirmUpdate, setConfirmUpdate] = useState(false);
+  // Exactly what will be written to QuickBooks, shown before anything is sent.
+  const preview = buildQbLines(invoice.lineItems || [], Number(invoice.total), { bySite: bySite && sites > 1 });
+  const linePicker = (
+    <div style={{ marginTop: 8 }}>
+      {sites > 1 && (
+        <label style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+          <input type="checkbox" checked={bySite} onChange={(e) => setBySite(e.target.checked)} />
+          Separate lines for each job site / city ({sites} on this invoice)
+        </label>
+      )}
+      {"error" in preview ? (
+        <div style={{ color: "var(--danger, #c0392b)" }}>{preview.error}</div>
+      ) : (
+        <div style={{ maxHeight: 220, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 10px", fontSize: "0.8rem" }}>
+          {preview.lines.map((l, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "3px 0" }}>
+              <span>{l.description}</span>
+              <span style={{ fontFamily: "var(--font-mono)", whiteSpace: "nowrap" }}>
+                {l.qty} × ${l.rate} = ${l.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
   const [expanded, setExpanded] = useState(false);
   const [msg, setMsg] = useState("");
   const [qbNote, setQbNote] = useState("");
@@ -609,11 +643,54 @@ function InvoiceCard({ projectId, invoice, tasks, qb }: { projectId: string; inv
                 {pending ? "Getting PDF…" : "Download PDF"}
               </button>
             )}
+            {!isDraft && invoice.qbInvoiceId && qb.connected && sites > 1 && (
+              confirmUpdate ? (
+                <div style={{ flexBasis: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", fontSize: "0.86rem" }}>
+                  Replace the lines on QuickBooks invoice{invoice.invoiceNumber ? ` #${invoice.invoiceNumber}` : ""} with these? The total stays ${Number(invoice.total).toLocaleString()}, and nothing is emailed.
+                  {linePicker}
+                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                    <button
+                      disabled={pending || "error" in preview}
+                      onClick={() => {
+                        setConfirmUpdate(false);
+                        setQbNote("");
+                        const show = openLater();
+                        run(async () => {
+                          const res = await updateQbInvoiceLines(projectId, invoice.id, bySite);
+                          if (res.note) setQbNote(res.note);
+                          show(res.link);
+                          return res;
+                        });
+                      }}
+                      style={primaryBtnStyle}
+                    >
+                      Yes, update it
+                    </button>
+                    <button onClick={() => setConfirmUpdate(false)} style={secondaryBtnStyle}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  disabled={pending}
+                  onClick={() => {
+                    setBySite(true);
+                    setConfirmUpdate(true);
+                  }}
+                  style={secondaryBtnStyle}
+                  title="Break the QuickBooks invoice out by job site / city, or put it back to one line per rate"
+                >
+                  {pending ? "Working…" : "Change QuickBooks lines"}
+                </button>
+              )
+            )}
             {!isDraft && !invoice.qbInvoiceId && qb.connected && (
               confirmSend ? (
                 // Confirmed on the page: a browser confirm() pop-up can be blocked, which made the button look dead.
                 <div style={{ flexBasis: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", fontSize: "0.86rem" }}>
                   Create this invoice in QuickBooks{qb.companyName ? ` (${qb.companyName})` : ""} for ${Number(invoice.total).toLocaleString()}? It is saved there with the Excel backup attached, not emailed.
+                  {linePicker}
                   <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                     <button
                       disabled={pending}
@@ -622,7 +699,7 @@ function InvoiceCard({ projectId, invoice, tasks, qb }: { projectId: string; inv
                         setQbNote("");
                         const show = openLater(); // opens the new invoice in QuickBooks when it is ready
                         run(async () => {
-                          const res = await sendInvoiceToQuickBooks(projectId, invoice.id);
+                          const res = await sendInvoiceToQuickBooks(projectId, invoice.id, bySite && sites > 1);
                           if (res.note) setQbNote(res.note);
                           show(res.link);
                           return res;

@@ -2,7 +2,7 @@
 // day (the backup Atmos wants); the QuickBooks invoice is the short version: hours by rate, "Hourly Rate Per Man" and
 // "Hourly Rate Per Welder", with the Atmos task details on top. Pure, so it can be checked without QuickBooks.
 
-export type TmRow = { position: string; hours: number; rate: number; amount: number };
+export type TmRow = { position: string; hours: number; rate: number; amount: number; address?: string | null };
 export type QbLine = { description: string; qty: number; rate: number; amount: number };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -10,10 +10,27 @@ const isWelder = (position: string) => /welder/i.test(position);
 
 type Group = { welder: boolean; rate: number; hours: number; positions: Set<string> };
 
+// Two rows are the same job site when their address reads the same, ignoring capitals, spacing and punctuation.
+const siteKey = (address: string | null | undefined) => (address || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+export const siteCount = (rows: TmRow[]) => new Set(rows.map((r) => siteKey(r.address))).size;
+
+// One set of rate lines for each job site / city (never split by day), each naming the site.
+function buildSiteLines(rows: TmRow[]): QbLine[] {
+  const sites = new Map<string, { name: string; rows: TmRow[] }>();
+  for (const r of rows) {
+    const k = siteKey(r.address);
+    const s = sites.get(k) || { name: (r.address || "").trim() || "No location listed", rows: [] };
+    s.rows.push(r);
+    sites.set(k, s);
+  }
+  // Sites stay in the order they first appear on the invoice (the order the work was done).
+  return [...sites.values()].flatMap((s) => rateLines(s.rows).map((l) => ({ ...l, description: `${l.description} - ${s.name}`.slice(0, 4000) })));
+}
+
 // Rows grouped by rate: welders on their own line, everyone else under "Per Man". If the non-welders have more than
 // one rate, the most-worked rate keeps the plain label and the others name their positions so nothing is hidden.
-export function buildQbLines(rows: TmRow[], invoiceTotal: number): { lines: QbLine[] } | { error: string } {
-  if (!rows.length) return { error: "This invoice has no lines." };
+function rateLines(rows: TmRow[]): QbLine[] {
   const groups = new Map<string, Group>();
   for (const r of rows) {
     const welder = isWelder(r.position);
@@ -35,6 +52,13 @@ export function buildQbLines(rows: TmRow[], invoiceTotal: number): { lines: QbLi
     const qty = round2(g.hours);
     lines.push({ description: i === 0 ? "Hourly Rate Per Welder" : `Hourly Rate Per Welder - ${g.rate}/hr`, qty, rate: g.rate, amount: round2(qty * g.rate) });
   });
+  return lines;
+}
+
+// The QuickBooks lines for an invoice: by rate (the usual short version), or broken out by job site.
+export function buildQbLines(rows: TmRow[], invoiceTotal: number, opts: { bySite?: boolean } = {}): { lines: QbLine[] } | { error: string } {
+  if (!rows.length) return { error: "This invoice has no lines." };
+  const lines = opts.bySite ? buildSiteLines(rows) : rateLines(rows);
 
   const sum = round2(lines.reduce((s, l) => s + l.amount, 0));
   if (Math.abs(sum - invoiceTotal) > 0.05) {
