@@ -135,6 +135,9 @@ function RatesSubsection({ projectId, rates }: { projectId: string; rates: Billi
         <button onClick={() => apply("jackson")} style={addBtnStyle}>
           Apply Jackson rates (Mississippi)
         </button>
+        <button onClick={() => apply("contractor")} style={addBtnStyle} title="$110/hr for every position except Welder ($150), for third-party contractors (not Atmos)">
+          Apply third-party contractor rates
+        </button>
         {error && <span style={{ color: "var(--danger)", fontSize: "0.78rem" }}>{error}</span>}
       </div>
       {rates.length ? (

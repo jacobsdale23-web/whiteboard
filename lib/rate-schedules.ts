@@ -1,6 +1,6 @@
 // The company's standard T&M hourly rate schedules (from the current rate
 // sheet). Louisiana jobs bill at the Louisiana schedule; Jackson applies to all
-// Mississippi jobs. Drilling Crew Driller / Locator bill at the same rate as
+// Mississippi (Atmos) jobs; third-party contractors have their own schedule. Drilling Crew Driller / Locator bill at the same rate as
 // every other position except Welder. Positions not listed (e.g. Tapping Crew)
 // have no confirmed rate, so they are left unset and T&M invoices flag them as
 // missing rather than silently billing $0.
@@ -31,6 +31,21 @@ export const RATE_SCHEDULES = {
       "Locusview Tech": 140,
       "Drilling Crew Driller": 140,
       "Drilling Crew Locator": 140,
+    } as Record<string, number>,
+  },
+  // T&M work for third-party contractors (everyone except Atmos): $110/hr for every position except Welder.
+  contractor: {
+    label: "Third-party contractor",
+    rates: {
+      Foreman: 110,
+      Operator: 110,
+      Laborer: 110,
+      Welder: 150,
+      Fuser: 110,
+      Flagger: 110,
+      "Locusview Tech": 110,
+      "Drilling Crew Driller": 110,
+      "Drilling Crew Locator": 110,
     } as Record<string, number>,
   },
 };
