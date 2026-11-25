@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { computeBar, addDays, barColor, tapTag, type GanttProject, type Bar } from "@/lib/gantt";
 import { JOB_KIND_COLORS, KIND_FILTERS, billingTypeFromOppType, cleanKindFilters, jobKindFromOppType, matchesKindFilters, oppTypeColor, type KindFilter } from "@/lib/job-kinds";
+import { formatMeetingTime } from "@/lib/meeting";
 import { crewFor, crewLine, type SchedRow } from "@/lib/schedule";
 import GanttChart from "./gantt-chart";
 import CrewGrid from "./crew-grid";
@@ -42,7 +43,9 @@ export type CalendarEvent = {
   kind: "Bid Due" | "Meeting";
   oppType?: string | null; // Hot Tap and FWI Hot Tap opportunities show in their own colors
   customer: string | null;
-  estimator: string | null;
+  estimator: string | null; // a meeting's organizer
+  time?: string | null; // meetings: "HH:MM"
+  attendees?: string[]; // meetings: people besides the organizer
 };
 
 const EVENT_COLORS: Record<CalendarEvent["kind"], string> = {
@@ -56,6 +59,11 @@ function eventColor(e: CalendarEvent): string {
 
 function eventDate(e: CalendarEvent): Date {
   return new Date(e.date + "T00:00:00");
+}
+
+// "Jacob (organizer), Daryl, Customer rep"
+function meetingPeople(e: CalendarEvent): string {
+  return [e.estimator ? `${e.estimator} (organizer)` : "", ...(e.attendees || [])].filter(Boolean).join(", ");
 }
 
 function eventsOn(events: CalendarEvent[], day: Date): CalendarEvent[] {
@@ -298,10 +306,12 @@ function UpcomingEvents({ events, today }: { events: CalendarEvent[]; today: Dat
             </span>
             <DayTag>{e.kind}</DayTag>
             {oppTypeColor(e.oppType) && <DayTag>{e.oppType}</DayTag>}
+            {e.time && <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>{formatMeetingTime(e.time)}</span>}
             <Link href={`/opportunities/${e.id}`} style={{ color: "inherit", fontWeight: 600 }}>
               {e.name}
             </Link>
             {e.customer && <span style={{ color: "var(--muted)" }}>{e.customer}</span>}
+            {e.kind === "Meeting" && <span style={{ color: "var(--muted)" }}>{meetingPeople(e)}</span>}
           </div>
         ))}
       </div>
@@ -364,7 +374,7 @@ function WeekView({ items, events, crew, weekStart, today, onSelect }: { items: 
                 <Link
                   key={e.id}
                   href={`/opportunities/${e.id}`}
-                  title={`${e.kind}: ${e.name}`}
+                  title={`${e.kind}: ${e.name}${e.time ? `\n${formatMeetingTime(e.time)}` : ""}${e.kind === "Meeting" ? `\n${meetingPeople(e)}` : ""}`}
                   style={{
                     background: eventColor(e),
                     color: "#fff",
@@ -376,7 +386,7 @@ function WeekView({ items, events, crew, weekStart, today, onSelect }: { items: 
                     overflow: "hidden",
                   }}
                 >
-                  <div style={{ opacity: 0.85, textTransform: "uppercase", fontSize: "0.62rem" }}>{oppTypeColor(e.oppType) ? `${e.oppType} · ${e.kind}` : e.kind}</div>
+                  <div style={{ opacity: 0.85, textTransform: "uppercase", fontSize: "0.62rem" }}>{oppTypeColor(e.oppType) ? `${e.oppType} · ${e.kind}` : e.kind}{e.time ? ` · ${formatMeetingTime(e.time)}` : ""}</div>
                   {e.name}
                 </Link>
               ))}
@@ -484,8 +494,10 @@ function DayView({ items, events, crew, day, onSelect }: { items: Item[]; events
             <DayTag>{e.kind === "Bid Due" ? "Bid due today" : "Meeting"}</DayTag>
             {oppTypeColor(e.oppType) && <DayTag>{e.oppType}</DayTag>}
           </div>
+          {e.time && <Row label="Time" value={formatMeetingTime(e.time)} />}
           {e.customer && <Row label="Customer" value={e.customer} />}
-          {e.estimator && <Row label="Estimator" value={e.estimator} />}
+          {e.estimator && <Row label={e.kind === "Meeting" ? "Organizer" : "Estimator"} value={e.estimator} />}
+          {!!e.attendees?.length && <Row label="Also attending" value={e.attendees.join(", ")} />}
         </div>
       ))}
       {visible.map(({ project, bar }) => {

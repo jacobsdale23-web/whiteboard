@@ -7,6 +7,7 @@ import { getSessionAndProfile, isSafetyViewer } from "@/lib/auth/current-user";
 import { canAccessCompany, getWorkspace, switchCompanyUrl } from "@/lib/auth/company";
 import { computeEstimateSummary } from "@/lib/estimate";
 import { isSimilarText } from "@/lib/similar-bids";
+import { formatMeetingTime, isMeeting } from "@/lib/meeting";
 import EstimateSection from "./estimate-section";
 import PlanFilesSection from "./plan-files-section";
 import PlanReviewSection from "./plan-review-section";
@@ -50,9 +51,19 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
         {opportunity.location && <div style={{ color: "var(--muted)" }}>{opportunity.location}</div>}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px,1fr))", gap: 16, marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
           <Fact label="Customer" value={opportunity.customer || "—"} />
-          <Fact label="Estimator" value={opportunity.estimator || "—"} />
-          <Fact label="Bid Due" value={opportunity.bidDueDate || "—"} />
-          <Fact label="Bid Value" value={opportunity.bidValue ? `$${Number(opportunity.bidValue).toLocaleString()}` : "—"} />
+          <Fact label={isMeeting(opportunity) ? "Organizer" : "Estimator"} value={opportunity.estimator || "—"} />
+          {isMeeting(opportunity) ? (
+            <>
+              <Fact label="Meeting Date" value={opportunity.bidDueDate || "—"} />
+              <Fact label="Time" value={formatMeetingTime(opportunity.meetingTime) || "—"} />
+              {!!opportunity.attendees.length && <Fact label="Additional Attendees" value={opportunity.attendees.join(", ")} />}
+            </>
+          ) : (
+            <>
+              <Fact label="Bid Due" value={opportunity.bidDueDate || "—"} />
+              <Fact label="Bid Value" value={opportunity.bidValue ? `$${Number(opportunity.bidValue).toLocaleString()}` : "—"} />
+            </>
+          )}
         </div>
       </div>
 

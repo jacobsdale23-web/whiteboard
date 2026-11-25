@@ -6,6 +6,7 @@ import { getPeople } from "@/lib/people";
 import { isSafetyViewer } from "@/lib/auth/current-user";
 import { getWorkspace, requireCompany } from "@/lib/auth/company";
 import { getPmPool } from "@/lib/pms";
+import { isMeeting } from "@/lib/meeting";
 import CalendarView from "./calendar-view";
 
 export default async function CalendarPage() {
@@ -31,11 +32,15 @@ export default async function CalendarPage() {
       name: o.jobName,
       location: o.location,
       date: o.bidDueDate as string,
-      kind: o.kind === "Meeting" ? ("Meeting" as const) : ("Bid Due" as const),
+      kind: isMeeting(o) ? ("Meeting" as const) : ("Bid Due" as const),
       oppType: o.oppType,
       customer: o.customer,
       estimator: o.estimator,
-    }));
+      time: isMeeting(o) ? o.meetingTime : null,
+      attendees: isMeeting(o) ? o.attendees : [],
+    }))
+    // Timed meetings read in order through the day.
+    .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
 
   return (
     <section>

@@ -8,6 +8,7 @@ import { opportunities, projects } from "@/lib/db/schema";
 import { getSessionAndProfile, isSafetyViewer, assertNotSafety } from "@/lib/auth/current-user";
 import { assertCompanyAccess, canAccessCompany, requireCompany } from "@/lib/auth/company";
 import { billingTypeFromOppType, jobKindFromOppType } from "@/lib/job-kinds";
+import { cleanAttendees, cleanMeetingTime, isMeeting } from "@/lib/meeting";
 
 export type OpportunityFormState = { error?: string } | null;
 
@@ -21,10 +22,17 @@ export async function saveOpportunity(
   const jobName = String(formData.get("jobName") || "").trim();
   if (!jobName) return { error: "Job name is required." };
 
+  const kind = String(formData.get("kind") || "Opportunity");
+  const oppType = String(formData.get("oppType") || "Bid Job");
+  const meeting = isMeeting({ kind, oppType });
+
   const data = {
-    kind: String(formData.get("kind") || "Opportunity"),
-    oppType: String(formData.get("oppType") || "Bid Job"),
+    kind,
+    oppType,
     jobName,
+    // Only meetings carry a time and attendees.
+    meetingTime: meeting ? cleanMeetingTime(formData.get("meetingTime")) : null,
+    attendees: meeting ? cleanAttendees(String(formData.get("attendees") || "[]")) : [],
     estimator: String(formData.get("estimator") || ""),
     bidDueDate: String(formData.get("bidDueDate") || "") || null,
     customer: String(formData.get("customer") || "").trim() || null,

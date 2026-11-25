@@ -3,6 +3,8 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { saveOpportunity, type OpportunityFormState } from "./actions";
 import LocationInput from "../location-input";
+import AttendeesInput from "./attendees-input";
+import { isMeeting } from "@/lib/meeting";
 
 const KINDS = ["Opportunity", "Meeting"];
 const OPP_TYPES = ["Bid Job", "Quick Job", "T&M Job", "Meeting", "Hot Tap", "FWI Hot Tap", "O&M", "T&M (Atmos)"];
@@ -16,13 +18,19 @@ type OpportunityRow = {
   bidDueDate: string | null;
   customer: string | null;
   location: string | null;
+  meetingTime: string | null;
+  attendees: string[];
 };
 
 async function submit(_prev: OpportunityFormState, formData: FormData) {
   return saveOpportunity(_prev, formData);
 }
 
-export default function OpportunityFormModal({ opportunity, estimators }: { opportunity?: OpportunityRow; estimators: string[] }) {
+export default function OpportunityFormModal({ opportunity, estimators, people }: { opportunity?: OpportunityRow; estimators: string[]; people: string[] }) {
+  // Meetings get a time and attendees; the fields follow whichever of the two dropdowns says "Meeting".
+  const [kind, setKind] = useState(opportunity?.kind || "Opportunity");
+  const [oppType, setOppType] = useState(opportunity?.oppType || "Bid Job");
+  const meeting = isMeeting({ kind, oppType });
   // The PM list. An estimator who has since left the list stays selectable on the opportunities that already have them.
   const current = opportunity?.estimator || "";
   const options = current && !estimators.includes(current) ? [current, ...estimators] : estimators;
@@ -37,14 +45,21 @@ export default function OpportunityFormModal({ opportunity, estimators }: { oppo
     wasPending.current = pending;
   }, [pending, state]);
 
+  // Each time the form opens, the two dropdowns start from what is saved.
+  function openForm() {
+    setKind(opportunity?.kind || "Opportunity");
+    setOppType(opportunity?.oppType || "Bid Job");
+    setOpen(true);
+  }
+
   return (
     <>
       {isEdit ? (
-        <button onClick={() => setOpen(true)} style={iconBtnStyle} title="Edit">
+        <button onClick={openForm} style={iconBtnStyle} title="Edit">
           ✎
         </button>
       ) : (
-        <button onClick={() => setOpen(true)} style={primaryBtnStyle}>
+        <button onClick={openForm} style={primaryBtnStyle}>
           + New Opportunity
         </button>
       )}
@@ -58,7 +73,7 @@ export default function OpportunityFormModal({ opportunity, estimators }: { oppo
             {isEdit && <input type="hidden" name="id" value={opportunity.id} />}
 
             <Field label="Opportunity or Meeting">
-              <select name="kind" defaultValue={opportunity?.kind || "Opportunity"} style={inputStyle}>
+              <select name="kind" value={kind} onChange={(e) => setKind(e.target.value)} style={inputStyle}>
                 {KINDS.map((k) => (
                   <option key={k} value={k}>
                     {k}
@@ -68,7 +83,7 @@ export default function OpportunityFormModal({ opportunity, estimators }: { oppo
             </Field>
 
             <Field label="Opportunity Type">
-              <select name="oppType" defaultValue={opportunity?.oppType || "Bid Job"} style={inputStyle}>
+              <select name="oppType" value={oppType} onChange={(e) => setOppType(e.target.value)} style={inputStyle}>
                 {OPP_TYPES.map((t) => (
                   <option key={t} value={t}>
                     {t}
@@ -77,11 +92,11 @@ export default function OpportunityFormModal({ opportunity, estimators }: { oppo
               </select>
             </Field>
 
-            <Field label="Job Name">
+            <Field label={meeting ? "Meeting Name" : "Job Name"}>
               <input type="text" name="jobName" required defaultValue={opportunity?.jobName} style={inputStyle} />
             </Field>
 
-            <Field label="Estimator">
+            <Field label={meeting ? "Organizer" : "Estimator"}>
               <select name="estimator" defaultValue={defaultEstimator} style={inputStyle}>
                 {options.map((e) => (
                   <option key={e} value={e}>
@@ -91,9 +106,19 @@ export default function OpportunityFormModal({ opportunity, estimators }: { oppo
               </select>
             </Field>
 
-            <Field label="Bid Due Date">
+            <Field label={meeting ? "Meeting Date" : "Bid Due Date"}>
               <input type="date" name="bidDueDate" defaultValue={opportunity?.bidDueDate || ""} style={inputStyle} />
             </Field>
+
+            {meeting && (
+              <>
+                <Field label="Time">
+                  <input type="time" name="meetingTime" defaultValue={opportunity?.meetingTime || ""} style={inputStyle} />
+                </Field>
+                {/* Not wrapped in Field (a label): clicking a name chip must not jump to another control. */}
+                <AttendeesInput initial={opportunity?.attendees || []} suggestions={people} inputStyle={inputStyle} />
+              </>
+            )}
 
             <Field label="Customer">
               <input type="text" name="customer" defaultValue={opportunity?.customer || ""} style={inputStyle} />

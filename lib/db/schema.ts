@@ -470,6 +470,9 @@ export const opportunities = pgTable("opportunities", {
   bidValue: numeric("bid_value"),
   bidStatus: text("bid_status").notNull().default("Open"), // Open | Won | Lost | Abandoned
   convertedProjectId: text("converted_project_id"),
+  // Meetings only: start time ("HH:MM") and who is attending. The meeting's date is bidDueDate.
+  meetingTime: text("meeting_time"),
+  attendees: jsonb("attendees").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

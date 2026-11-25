@@ -10,6 +10,8 @@ import StatusPill from "./status-pill";
 import DeleteButton from "./delete-button";
 import { oppTypeColor } from "@/lib/job-kinds";
 import { getPmPool } from "@/lib/pms";
+import { getPeople } from "@/lib/people";
+import { formatMeetingTime, isMeeting } from "@/lib/meeting";
 
 type OpportunityRow = typeof opportunities.$inferSelect;
 
@@ -25,6 +27,8 @@ export default async function OpportunitiesPage() {
   const company = await requireCompany();
   const rows = await db.select().from(opportunities).where(eq(opportunities.companyId, company.id));
   const estimators = await getPmPool(); // the same people as the PM list, so a won bid's estimator becomes the job's PM
+  // Names offered for a meeting's attendees (anyone else can be typed in).
+  const people = [...new Set([...estimators, ...(await getPeople(company.id)).names])].sort((a, b) => a.localeCompare(b));
   // The page is the to-do list: only bids still being worked. A won bid has moved to the board as an upcoming job
   // (its estimate follows it there, under Original Bid), so it is tucked away below with the lost and abandoned ones.
   const closed = (o: OpportunityRow) => o.bidStatus === "Won" || o.bidStatus === "Lost" || o.bidStatus === "Abandoned";
@@ -36,12 +40,12 @@ export default async function OpportunitiesPage() {
     <section>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <h2>Opportunities ({active.length})</h2>
-        <OpportunityFormModal estimators={estimators} />
+        <OpportunityFormModal estimators={estimators} people={people} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
         {active.map((o) => (
-          <OpportunityCard key={o.id} o={o} estimators={estimators} />
+          <OpportunityCard key={o.id} o={o} estimators={estimators} people={people} />
         ))}
         {!active.length && (
           <p style={{ color: "var(--muted)" }}>{rows.length ? "Nothing to work on right now." : "No opportunities yet."} Add one with &ldquo;+ New Opportunity&rdquo;.</p>
@@ -55,7 +59,7 @@ export default async function OpportunitiesPage() {
           </summary>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14, marginTop: 14 }}>
             {won.map((o) => (
-              <OpportunityCard key={o.id} o={o} estimators={estimators} />
+              <OpportunityCard key={o.id} o={o} estimators={estimators} people={people} />
             ))}
           </div>
         </details>
@@ -68,7 +72,7 @@ export default async function OpportunitiesPage() {
           </summary>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14, marginTop: 14 }}>
             {archived.map((o) => (
-              <OpportunityCard key={o.id} o={o} estimators={estimators} />
+              <OpportunityCard key={o.id} o={o} estimators={estimators} people={people} />
             ))}
           </div>
         </details>
@@ -77,7 +81,7 @@ export default async function OpportunitiesPage() {
   );
 }
 
-function OpportunityCard({ o, estimators }: { o: OpportunityRow; estimators: string[] }) {
+function OpportunityCard({ o, estimators, people }: { o: OpportunityRow; estimators: string[]; people: string[] }) {
   return (
     <div
       style={{
@@ -99,7 +103,7 @@ function OpportunityCard({ o, estimators }: { o: OpportunityRow; estimators: str
           <div style={{ color: "var(--muted)", fontSize: "0.8rem" }}>{o.location}</div>
         </div>
         <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-          <OpportunityFormModal opportunity={o} estimators={estimators} />
+          <OpportunityFormModal opportunity={o} estimators={estimators} people={people} />
           <DeleteButton id={o.id} jobName={o.jobName} />
         </div>
       </div>
@@ -120,10 +124,25 @@ function OpportunityCard({ o, estimators }: { o: OpportunityRow; estimators: str
         />
       </div>
 
-      <MetaRow label="Bid Due" value={o.bidDueDate || "—"} />
-      <MetaRow label="Bid Value" value={o.bidValue ? `$${Number(o.bidValue).toLocaleString()}` : "—"} />
-      <MetaRow label="Estimator" value={o.estimator || "—"} />
+      {isMeeting(o) ? (
+        <>
+          <MetaRow label="Date" value={o.bidDueDate || "—"} />
+          <MetaRow label="Time" value={formatMeetingTime(o.meetingTime) || "—"} />
+        </>
+      ) : (
+        <>
+          <MetaRow label="Bid Due" value={o.bidDueDate || "—"} />
+          <MetaRow label="Bid Value" value={o.bidValue ? `$${Number(o.bidValue).toLocaleString()}` : "—"} />
+        </>
+      )}
+      <MetaRow label={isMeeting(o) ? "Organizer" : "Estimator"} value={o.estimator || "—"} />
       <MetaRow label="Customer" value={o.customer || "—"} />
+      {isMeeting(o) && !!o.attendees.length && (
+        <div style={{ fontSize: "0.85rem" }}>
+          <div style={{ color: "var(--muted)", fontSize: "0.72rem", textTransform: "uppercase" }}>Additional attendees</div>
+          <div style={{ fontWeight: 600 }}>{o.attendees.join(", ")}</div>
+        </div>
+      )}
       {o.bidStatus === "Won" && o.convertedProjectId && (
         <Link href={`/projects/${o.convertedProjectId}`} style={{ fontSize: "0.82rem", textDecoration: "underline" }}>
           Open the job →
