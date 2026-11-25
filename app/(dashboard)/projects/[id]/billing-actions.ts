@@ -10,6 +10,8 @@ import { getSessionAndProfile } from "@/lib/auth/current-user";
 import { buildInvoiceLineItems, sumLineItems, validateLineItems, findCrossCrewOverlaps, type TmLineItem } from "@/lib/tm-billing";
 import { RATE_SCHEDULES, type RateScheduleKey } from "@/lib/rate-schedules";
 import { warningKey } from "@/lib/tm-ack";
+import { forSite, invoiceSite, splitBilled } from "@/lib/tm-sites";
+import { siteKey } from "@/lib/qb-invoice";
 import ExcelJS from "exceljs";
 
 // Real, server-enforced admin check — rates and invoice totals must never
@@ -166,12 +168,18 @@ async function refreshDraft(invoice: typeof tmInvoices.$inferSelect): Promise<{ 
   const [task] = await db.select().from(billingTasks).where(eq(billingTasks.id, invoice.billingTaskId));
   if (!task) return { error: "That billing task no longer exists." };
 
-  const [logs, rates] = await Promise.all([
+  const [logs, rates, siblings] = await Promise.all([
     db.select().from(dailyLogs).where(eq(dailyLogs.projectId, invoice.projectId)),
     db.select().from(billingRates).where(eq(billingRates.projectId, invoice.projectId)),
+    db.select().from(tmInvoices).where(and(eq(tmInvoices.projectId, invoice.projectId), eq(tmInvoices.billingTaskId, invoice.billingTaskId))),
   ]);
-  const lineItems = buildInvoiceLineItems(logs, rates, task.taskNumber, invoice.periodStart, invoice.periodEnd);
-  if (!lineItems.length) return { error: noHoursMessage(logs, task.taskNumber, invoice.periodStart, invoice.periodEnd) };
+  const all = buildInvoiceLineItems(logs, rates, task.taskNumber, invoice.periodStart, invoice.periodEnd);
+  if (!all.length) return { error: noHoursMessage(logs, task.taskNumber, invoice.periodStart, invoice.periodEnd) };
+  // Hours already on another invoice stay off this one, and a one-site invoice stays on its site.
+  const billed = siblings.filter((s) => s.id !== invoice.id).flatMap((s) => s.lineItems || []);
+  const site = invoiceSite(invoice.lineItems);
+  const lineItems = forSite(splitBilled(all, billed).open, site);
+  if (!lineItems.length) return { error: `Nothing is left to bill on this draft${site ? ` for ${site}` : ""}: those hours are on another invoice or no longer in the daily logs.` };
 
   const total = sumLineItems(lineItems);
   const warnings = await computeWarnings(invoice.projectId, task.taskNumber, invoice.periodStart, invoice.periodEnd, lineItems);
@@ -246,36 +254,28 @@ export async function generateInvoice(
   projectId: string,
   billingTaskId: string,
   periodStart: string,
-  periodEnd: string
-): Promise<{ id: string; refreshed?: boolean } | { error: string }> {
+  periodEnd: string,
+  site?: string
+): Promise<{ id: string; refreshed?: boolean; note?: string } | { error: string }> {
   await requireAdmin();
   // Expected problems come back as a result, not a throw: a thrown message is hidden in production and the
   // person billing only sees an error code.
   if (!periodStart || !periodEnd) return { error: "Pick a start and end date for the billing period." };
+  const onlySite = site?.trim() || undefined;
 
-  const [task] = await db.select().from(billingTasks).where(eq(billingTasks.id, billingTaskId));
+  const [task] = await db.select().from(billingTasks).where(and(eq(billingTasks.id, billingTaskId), eq(billingTasks.projectId, projectId)));
   if (!task) return { error: "That billing task no longer exists." };
 
-  // Never make a second copy of an invoice: the same period refreshes the existing draft, and any other
-  // overlap would bill the same hours twice.
   const existing = await db
     .select()
     .from(tmInvoices)
     .where(and(eq(tmInvoices.projectId, projectId), eq(tmInvoices.billingTaskId, billingTaskId)));
-  const overlapping = existing.filter((e) => e.periodStart <= periodEnd && periodStart <= e.periodEnd);
-  const sameDraft = overlapping.find((e) => e.status === "draft" && e.periodStart === periodStart && e.periodEnd === periodEnd);
+  // Never make a second copy of an invoice: the same period and job site refreshes the existing draft.
+  const sameDraft = existing.find((e) => e.status === "draft" && e.periodStart === periodStart && e.periodEnd === periodEnd && siteKey(invoiceSite(e.lineItems)) === siteKey(onlySite));
   if (sameDraft) {
     const res = await refreshDraft(sameDraft);
     revalidatePath(`/projects/${projectId}`);
     return res.error ? { error: res.error } : { id: sameDraft.id, refreshed: true };
-  }
-  if (overlapping.length) {
-    const o = overlapping[0];
-    return {
-      error: `This task already has ${o.status === "approved" ? "an approved" : "a draft"} invoice for ${o.periodStart} to ${o.periodEnd}, which overlaps those dates, so the same hours would be billed twice. ${
-        o.status === "draft" ? "Open that draft and use Refresh from daily logs" : "Delete it first if it has to be redone"
-      }, or pick dates that don't overlap.`,
-    };
   }
 
   const [logs, rates] = await Promise.all([
@@ -283,8 +283,20 @@ export async function generateInvoice(
     db.select().from(billingRates).where(eq(billingRates.projectId, projectId)),
   ]);
 
-  const lineItems = buildInvoiceLineItems(logs, rates, task.taskNumber, periodStart, periodEnd);
-  if (!lineItems.length) return { error: noHoursMessage(logs, task.taskNumber, periodStart, periodEnd) };
+  const all = buildInvoiceLineItems(logs, rates, task.taskNumber, periodStart, periodEnd);
+  if (!all.length) return { error: noHoursMessage(logs, task.taskNumber, periodStart, periodEnd) };
+
+  // Dates may overlap another invoice (two job sites in one week), but the same hours are never billed twice.
+  const overlapping = existing.filter((e) => e.periodStart <= periodEnd && periodStart <= e.periodEnd);
+  const { open, taken } = splitBilled(all, overlapping.flatMap((e) => e.lineItems || []));
+  const lineItems = forSite(open, onlySite);
+  const where = onlySite ? ` for ${onlySite}` : "";
+  const named = overlapping.map((o) => (o.invoiceNumber ? `#${o.invoiceNumber}` : `${o.status === "draft" ? "the draft" : "the invoice"} for ${o.periodStart} to ${o.periodEnd}`)).join(", ");
+  if (!lineItems.length) {
+    if (!forSite(all, onlySite).length) return { error: `No daily log hours${where} from ${periodStart} to ${periodEnd}.` };
+    return { error: `All the hours${where} from ${periodStart} to ${periodEnd} are already on ${named}. Delete that invoice first if it has to be redone.` };
+  }
+  const left = forSite(taken, onlySite).length;
   const total = sumLineItems(lineItems);
   const warnings = await computeWarnings(projectId, task.taskNumber, periodStart, periodEnd, lineItems);
 
@@ -304,7 +316,7 @@ export async function generateInvoice(
     .returning();
 
   revalidatePath(`/projects/${projectId}`);
-  return { id: invoice.id };
+  return { id: invoice.id, note: left ? `Draft made. ${left} line${left === 1 ? " was" : "s were"} left off because ${left === 1 ? "it is" : "they are"} already on ${named}.` : undefined };
 }
 
 export async function removeInvoiceLineItem(projectId: string, invoiceId: string, lineIndex: number) {

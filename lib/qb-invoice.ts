@@ -11,7 +11,7 @@ const isWelder = (position: string) => /welder/i.test(position);
 type Group = { welder: boolean; rate: number; hours: number; positions: Set<string> };
 
 // Two rows are the same job site when their address reads the same, ignoring capitals, spacing and punctuation.
-const siteKey = (address: string | null | undefined) => (address || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+export const siteKey = (address: string | null | undefined) => (address || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
 
 export const siteCount = (rows: TmRow[]) => new Set(rows.map((r) => siteKey(r.address))).size;
 

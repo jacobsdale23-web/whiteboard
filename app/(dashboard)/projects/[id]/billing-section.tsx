@@ -26,7 +26,8 @@ import QbHelp from "./qb-help";
 import CollapsibleCard from "./collapsible-card";
 import { openLater } from "@/lib/open-later";
 import { downloadBase64 } from "@/lib/download-file";
-import { buildQbLines, qbInvoiceLink, siteCount } from "@/lib/qb-invoice";
+import { buildQbLines, qbInvoiceLink, siteCount, siteKey } from "@/lib/qb-invoice";
+import { invoiceSite } from "@/lib/tm-sites";
 
 // Whether White Board can send invoices to this company's QuickBooks.
 export type QbStatus = { configured: boolean; connected: boolean; companyName: string | null; realmId: string | null };
@@ -76,6 +77,9 @@ type TmInvoice = {
   qbInvoiceId: string | null;
 };
 
+// Where each daily log was worked, to offer "one invoice per job site".
+type LogSite = { task: string | null; date: string; address: string | null };
+
 // Admin-only. Never render this component, or pass billing rates / invoice
 // totals as props, for a non-admin session — field crew must only ever see
 // position + hours on the Daily Log, never $/hr or computed amounts.
@@ -86,8 +90,10 @@ export default function BillingSection({
   tmInvoices,
   qb,
   siteLinesDefault,
+  logSites,
 }: {
   projectId: string;
+  logSites: LogSite[];
   billingRates: BillingRate[];
   billingTasks: BillingTask[];
   tmInvoices: TmInvoice[];
@@ -105,7 +111,7 @@ export default function BillingSection({
 
       <RatesSubsection projectId={projectId} rates={billingRates} />
       <TasksSubsection projectId={projectId} tasks={billingTasks} />
-      <InvoicesSubsection projectId={projectId} tasks={billingTasks} invoices={tmInvoices} qb={qb} siteLinesDefault={siteLinesDefault} />
+      <InvoicesSubsection projectId={projectId} tasks={billingTasks} invoices={tmInvoices} qb={qb} siteLinesDefault={siteLinesDefault} logSites={logSites} />
     </CollapsibleCard>
   );
 }
@@ -296,13 +302,27 @@ function InvoicesSubsection({
   invoices,
   qb,
   siteLinesDefault,
+  logSites,
 }: {
   projectId: string;
   tasks: BillingTask[];
   invoices: TmInvoice[];
   qb: QbStatus;
   siteLinesDefault: boolean;
+  logSites: LogSite[];
 }) {
+  // The task and dates typed in the form, to list the job sites worked in them.
+  const [pick, setPick] = useState({ taskId: "", start: "", end: "" });
+  const pickedTask = tasks.find((t) => t.id === pick.taskId)?.taskNumber;
+  const siteMap = new Map<string, string>();
+  if (pickedTask && pick.start && pick.end) {
+    for (const l of logSites) {
+      if (l.task !== pickedTask || l.date < pick.start || l.date > pick.end) continue;
+      const k = siteKey(l.address);
+      if (k && !siteMap.has(k)) siteMap.set(k, (l.address || "").trim());
+    }
+  }
+  const siteOptions = [...siteMap.values()].sort((a, b) => a.localeCompare(b));
   const [showGen, setShowGen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -322,21 +342,27 @@ function InvoicesSubsection({
 
       {showGen && (
         <form
+          onChange={(e) => {
+            const fd = new FormData(e.currentTarget);
+            setPick({ taskId: String(fd.get("billingTaskId") || ""), start: String(fd.get("periodStart") || ""), end: String(fd.get("periodEnd") || "") });
+          }}
           onSubmit={(e) => {
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
             const billingTaskId = String(fd.get("billingTaskId") || "");
             const periodStart = String(fd.get("periodStart") || "");
             const periodEnd = String(fd.get("periodEnd") || "");
+            const site = String(fd.get("site") || "");
             setError(null);
             setNotice(null);
             startTransition(async () => {
               try {
-                const res = await generateInvoice(projectId, billingTaskId, periodStart, periodEnd);
+                const res = await generateInvoice(projectId, billingTaskId, periodStart, periodEnd, site || undefined);
                 if ("error" in res) setError(res.error);
                 else {
                   setShowGen(false);
                   if (res.refreshed) setNotice("That period already had a draft, so it was refreshed from the daily logs instead of making a copy.");
+                  else if (res.note) setNotice(res.note);
                 }
               } catch (err) {
                 setError(err instanceof Error ? err.message : "Couldn't generate that invoice.");
@@ -363,6 +389,18 @@ function InvoicesSubsection({
               <input type="date" name="periodEnd" required style={inputStyle} />
             </Field>
           </div>
+          {siteOptions.length > 1 && (
+            <Field label="Job site / city">
+              <select name="site" defaultValue="" style={{ ...inputStyle, minWidth: 260 }}>
+                <option value="">All job sites on one invoice</option>
+                {siteOptions.map((s) => (
+                  <option key={s} value={s}>
+                    Only {s}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
           {error && <p style={{ color: "var(--danger, #c0392b)", fontSize: "0.82rem" }}>{error}</p>}
           <div style={{ display: "flex", gap: 8 }}>
             <button type="submit" style={primaryBtnStyle} disabled={pending}>
@@ -389,16 +427,17 @@ function InvoicesSubsection({
 
 function InvoiceCard({ projectId, invoice, tasks, qb, siteLinesDefault }: { projectId: string; invoice: TmInvoice; tasks: BillingTask[]; qb: QbStatus; siteLinesDefault: boolean }) {
   const sites = siteCount(invoice.lineItems || []);
+  const hasSite = (invoice.lineItems || []).some((l) => siteKey(l.address));
   const [bySite, setBySite] = useState(siteLinesDefault);
   const [confirmUpdate, setConfirmUpdate] = useState(false);
   // Exactly what will be written to QuickBooks, shown before anything is sent.
-  const preview = buildQbLines(invoice.lineItems || [], Number(invoice.total), { bySite: bySite && sites > 1 });
+  const preview = buildQbLines(invoice.lineItems || [], Number(invoice.total), { bySite: bySite && hasSite });
   const linePicker = (
     <div style={{ marginTop: 8 }}>
-      {sites > 1 && (
+      {hasSite && (
         <label style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
           <input type="checkbox" checked={bySite} onChange={(e) => setBySite(e.target.checked)} />
-          Separate lines for each job site / city ({sites} on this invoice)
+          {sites > 1 ? `Separate lines for each job site / city (${sites} on this invoice)` : "Name the job site / city on the line"}
         </label>
       )}
       {"error" in preview ? (
@@ -465,7 +504,7 @@ function InvoiceCard({ projectId, invoice, tasks, qb, siteLinesDefault }: { proj
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontWeight: 600, fontSize: "0.88rem" }}>
-            {task?.taskNumber || "Unknown task"} · {invoice.periodStart} → {invoice.periodEnd}
+            {task?.taskNumber || "Unknown task"} · {invoiceSite(invoice.lineItems) ? `${invoiceSite(invoice.lineItems)} · ` : ""}{invoice.periodStart} → {invoice.periodEnd}
           </div>
           <div style={{ fontSize: "0.76rem", color: "var(--muted)" }}>
             <span
@@ -643,7 +682,7 @@ function InvoiceCard({ projectId, invoice, tasks, qb, siteLinesDefault }: { proj
                 {pending ? "Getting PDF…" : "Download PDF"}
               </button>
             )}
-            {!isDraft && invoice.qbInvoiceId && qb.connected && sites > 1 && (
+            {!isDraft && invoice.qbInvoiceId && qb.connected && hasSite && (
               confirmUpdate ? (
                 <div style={{ flexBasis: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", fontSize: "0.86rem" }}>
                   Replace the lines on QuickBooks invoice{invoice.invoiceNumber ? ` #${invoice.invoiceNumber}` : ""} with these? The total stays ${Number(invoice.total).toLocaleString()}, and nothing is emailed.
@@ -699,7 +738,7 @@ function InvoiceCard({ projectId, invoice, tasks, qb, siteLinesDefault }: { proj
                         setQbNote("");
                         const show = openLater(); // opens the new invoice in QuickBooks when it is ready
                         run(async () => {
-                          const res = await sendInvoiceToQuickBooks(projectId, invoice.id, bySite && sites > 1);
+                          const res = await sendInvoiceToQuickBooks(projectId, invoice.id, bySite && hasSite);
                           if (res.note) setQbNote(res.note);
                           show(res.link);
                           return res;

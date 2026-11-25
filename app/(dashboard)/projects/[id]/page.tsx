@@ -353,6 +353,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             tmInvoices={billingData.tmInvoices}
             qb={qbStatus}
             siteLinesDefault={!/atmos/i.test(project.customer || "")}
+            logSites={projectLogs.map((l) => ({ task: l.taskNumber, date: l.date, address: l.address }))}
           />
         </div>
       )}
