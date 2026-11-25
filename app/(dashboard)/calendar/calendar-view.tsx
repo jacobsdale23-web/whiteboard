@@ -234,10 +234,8 @@ export default function CalendarView({ projects: allProjects, events: allEvents,
       ) : null}
       {mode === "timeline" && !(filtered && !items.length && !events.length) && (
         <>
-          {/* A filter that leaves no jobs (Meetings only) shows just the list below, not an empty chart. */}
-          {(projects.length > 0 || !filtered) && <GanttChart projects={projects} crew={crew} todayIso={isoOf(today)} onSelect={setSelectedId} />}
+          <GanttChart projects={projects} events={events} crew={crew} todayIso={isoOf(today)} onSelect={setSelectedId} />
           <UpcomingEvents events={events} today={today} />
-          {filtered && !projects.length && !events.some((e) => dayDiff(eventDate(e), today) >= 0) && <div style={{ color: "var(--muted)", padding: 20 }}>Nothing coming up for “{filterLabel}”. Past dates still show in the Week and Day views.</div>}
         </>
       )}
       {mode === "week" && <WeekView items={items} events={events} crew={crew} weekStart={startOfWeek(anchor)} today={today} onSelect={setSelectedId} />}

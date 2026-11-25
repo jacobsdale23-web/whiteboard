@@ -1,6 +1,5 @@
 import { db } from "@/lib/db";
-import { projects, crew, projectManagers, opportunities } from "@/lib/db/schema";
-import { isMeeting } from "@/lib/meeting";
+import { projects, crew, projectManagers } from "@/lib/db/schema";
 import { asc, eq } from "drizzle-orm";
 import { isSafetyViewer } from "@/lib/auth/current-user";
 import { getWorkspace, requireCompany } from "@/lib/auth/company";
@@ -14,28 +13,6 @@ export default async function BoardPage() {
   const allCrew = await db.select().from(crew).where(eq(crew.companyId, company.id));
   const pmRows = await db.select().from(projectManagers).where(eq(projectManagers.active, true)).orderBy(asc(projectManagers.name));
   const canManagePeople = !!ws && !readOnly && ws.profile.role === "admin";
-
-  // Open bids and coming meetings, soonest first. A safety coordinator doesn't see estimating data.
-  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
-  const opps = readOnly ? [] : await db.select().from(opportunities).where(eq(opportunities.companyId, company.id));
-  const agenda = opps
-    .filter((o) => !["Won", "Lost", "Abandoned"].includes(o.bidStatus))
-    // A meeting drops off the day after it happens; a bid stays until its status is set.
-    .filter((o) => !isMeeting(o) || !o.bidDueDate || o.bidDueDate >= today)
-    .map((o) => ({
-      id: o.id,
-      name: o.jobName,
-      meeting: isMeeting(o),
-      date: o.bidDueDate,
-      time: isMeeting(o) ? o.meetingTime : null,
-      location: o.location,
-      customer: o.customer,
-      person: o.estimator,
-      attendees: isMeeting(o) ? o.attendees : [],
-      pastDue: !isMeeting(o) && !!o.bidDueDate && o.bidDueDate < today,
-      today: o.bidDueDate === today,
-    }))
-    .sort((a, b) => `${a.date || "9999"} ${a.time || "99:99"}`.localeCompare(`${b.date || "9999"} ${b.time || "99:99"}`));
 
   const byId = new Map(allProjects.map((p) => [p.id, p]));
   const labelOf = (p: (typeof allProjects)[number]) => (p.projectNumber ? `${p.projectNumber} · ${p.name}` : p.name);
@@ -84,7 +61,6 @@ export default async function BoardPage() {
 
   return (
     <BoardView
-      agenda={agenda}
       active={active.map(toBoard)}
       upcoming={upcoming.map(toBoard)}
       onHold={onHold.map(toBoard)}

@@ -1,18 +1,25 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { computeBar, addDays, startOfMonth, barColor, tapTag, type GanttProject, type Bar } from "@/lib/gantt";
-import { JOB_KIND_COLORS, JOB_KIND_LABELS } from "@/lib/job-kinds";
-import { crewFor, rangeLabel, type SchedRow } from "@/lib/schedule";
+import { JOB_KIND_COLORS, JOB_KIND_LABELS, oppTypeColor } from "@/lib/job-kinds";
+import { crewFor, rangeLabel, shortDate, type SchedRow } from "@/lib/schedule";
+import { formatMeetingTime } from "@/lib/meeting";
+import type { CalendarEvent } from "./calendar-view";
 
 const DAY_MS = 86400000;
 const DAY_WIDTH = 7;
 const ROW_H = 46;
 const GROUP_H = 32;
+const EVENT_H = 30; // meetings and bid due dates are single days, so their rows are slimmer
+
+const eventTone = (e: CalendarEvent) => oppTypeColor(e.oppType) ?? (e.kind === "Meeting" ? "var(--shop)" : "var(--upcoming)");
 
 type ProjectRow = { kind: "project"; project: GanttProject; left: number; width: number; cls: string; estimated: boolean };
 type GroupRow = { kind: "group"; label: string };
-type GanttRow = ProjectRow | GroupRow;
+type EventRow = { kind: "event"; event: CalendarEvent; left: number };
+type GanttRow = ProjectRow | GroupRow | EventRow;
 
 type Layout = {
   rows: GanttRow[];
@@ -22,7 +29,12 @@ type Layout = {
   todayX: number;
 };
 
-function buildLayout(projects: GanttProject[]): Layout {
+function buildLayout(projects: GanttProject[], events: CalendarEvent[], todayIso: string): Layout {
+  // Meetings and bid due dates from today on, soonest first (timed meetings in order through the day).
+  const coming = events
+    .filter((e) => e.date >= todayIso)
+    .sort((a, b) => `${a.date} ${a.time || "99:99"}`.localeCompare(`${b.date} ${b.time || "99:99"}`))
+    .map((e) => ({ event: e, day: new Date(e.date + "T00:00:00") }));
   const current: { project: GanttProject; bar: Bar }[] = [];
   const upcoming: { project: GanttProject; bar: Bar }[] = [];
   for (const p of projects) {
@@ -35,20 +47,19 @@ function buildLayout(projects: GanttProject[]): Layout {
   upcoming.sort(byFinish);
 
   const allBars = [...current, ...upcoming];
-  if (!allBars.length) {
+  if (!allBars.length && !coming.length) {
     return { rows: [], months: [], totalWidth: 0, totalHeight: 0, todayX: 0 };
   }
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  let minDate = allBars[0].bar.start;
-  let maxDate = allBars[0].bar.end;
+  let minDate = today;
+  let maxDate = today;
   for (const x of allBars) {
     if (x.bar.start < minDate) minDate = x.bar.start;
     if (x.bar.end > maxDate) maxDate = x.bar.end;
   }
-  if (today < minDate) minDate = today;
-  if (today > maxDate) maxDate = today;
+  for (const x of coming) if (x.day > maxDate) maxDate = x.day;
   const rangeStart = startOfMonth(addDays(minDate, -3));
   const rangeEndExclusive = startOfMonth(addDays(maxDate, 33));
   const xOf = (d: Date) => Math.round((d.getTime() - rangeStart.getTime()) / DAY_MS) * DAY_WIDTH;
@@ -73,20 +84,27 @@ function buildLayout(projects: GanttProject[]): Layout {
     estimated: x.bar.estimated,
   });
 
-  const rows: GanttRow[] = current.map(toRow);
+  // Meetings and bids sit at the top, where they are seen without scrolling past every job.
+  const rows: GanttRow[] = [];
+  if (coming.length) {
+    rows.push({ kind: "group", label: "Meetings & bids" });
+    coming.forEach((x) => rows.push({ kind: "event", event: x.event, left: xOf(x.day) }));
+    if (current.length) rows.push({ kind: "group", label: "Jobs" });
+  }
+  current.forEach((x) => rows.push(toRow(x)));
   if (upcoming.length) {
-    if (current.length) rows.push({ kind: "group", label: "Upcoming" });
+    if (current.length || coming.length) rows.push({ kind: "group", label: "Upcoming" });
     upcoming.forEach((x) => rows.push(toRow(x)));
   }
 
   let totalHeight = 0;
-  for (const r of rows) totalHeight += r.kind === "group" ? GROUP_H : ROW_H;
+  for (const r of rows) totalHeight += r.kind === "group" ? GROUP_H : r.kind === "event" ? EVENT_H : ROW_H;
 
   return { rows, months, totalWidth, totalHeight, todayX: xOf(today) };
 }
 
-export default function GanttChart({ projects, crew, todayIso, onSelect }: { projects: GanttProject[]; crew: SchedRow[]; todayIso: string; onSelect: (id: string) => void }) {
-  const layout = useMemo(() => buildLayout(projects), [projects]);
+export default function GanttChart({ projects, events, crew, todayIso, onSelect }: { projects: GanttProject[]; events: CalendarEvent[]; crew: SchedRow[]; todayIso: string; onSelect: (id: string) => void }) {
+  const layout = useMemo(() => buildLayout(projects, events, todayIso), [projects, events, todayIso]);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; project: GanttProject } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -109,6 +127,12 @@ export default function GanttChart({ projects, crew, todayIso, onSelect }: { pro
         <Legend color="var(--muted)" label="Completed, not yet billed" />
         <Legend color={JOB_KIND_COLORS.hot_tap!} label={`${JOB_KIND_LABELS.hot_tap} (active or upcoming)`} />
         <Legend color={JOB_KIND_COLORS.fwi_hot_tap!} label={`${JOB_KIND_LABELS.fwi_hot_tap} (active or upcoming)`} />
+        {!!events.length && (
+          <>
+            <Legend color="var(--shop)" label="Meeting" />
+            <Legend color="var(--upcoming)" label="Bid due" />
+          </>
+        )}
       </div>
       <div
         style={{
@@ -139,6 +163,12 @@ export default function GanttChart({ projects, crew, todayIso, onSelect }: { pro
                 }}
               >
                 {r.label}
+              </div>
+            ) : r.kind === "event" ? (
+              <div key={i} style={{ height: EVENT_H, borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", padding: "0 14px", overflow: "hidden" }}>
+                <Link href={`/opportunities/${r.event.id}`} title={r.event.name} style={{ color: "inherit", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {r.event.name}
+                </Link>
               </div>
             ) : (
               <div
@@ -190,6 +220,29 @@ export default function GanttChart({ projects, crew, todayIso, onSelect }: { pro
               {layout.rows.map((r, i) =>
                 r.kind === "group" ? (
                   <div key={i} style={{ height: GROUP_H, background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }} />
+                ) : r.kind === "event" ? (
+                  <div key={i} style={{ position: "relative", height: EVENT_H, borderBottom: "1px solid var(--border)" }}>
+                    <Link
+                      href={`/opportunities/${r.event.id}`}
+                      title={[
+                        `${r.event.kind}: ${r.event.name}`,
+                        `${shortDate(r.event.date)}${r.event.time ? ` at ${formatMeetingTime(r.event.time)}` : ""}`,
+                        r.event.customer,
+                        r.event.estimator ? `${r.event.kind === "Meeting" ? "Organizer" : "Estimator"}: ${r.event.estimator}` : "",
+                        r.event.attendees?.length ? `Also: ${r.event.attendees.join(", ")}` : "",
+                      ]
+                        .filter(Boolean)
+                        .join("\n")}
+                      style={{ position: "absolute", top: 0, height: EVENT_H, left: r.left - 6, display: "flex", alignItems: "center", gap: 7, color: "var(--ink)", textDecoration: "none", whiteSpace: "nowrap", fontSize: "0.74rem", fontWeight: 600, zIndex: 1 }}
+                    >
+                      <span aria-hidden style={{ width: 11, height: 11, background: eventTone(r.event), transform: "rotate(45deg)", borderRadius: 2, flexShrink: 0 }} />
+                      <span>
+                        {shortDate(r.event.date)}
+                        {r.event.time ? ` · ${formatMeetingTime(r.event.time)}` : ""}
+                        <span style={{ color: eventTone(r.event), marginLeft: 6, textTransform: "uppercase", fontSize: "0.62rem", fontWeight: 700 }}>{r.event.kind}</span>
+                      </span>
+                    </Link>
+                  </div>
                 ) : (
                   <div key={i} style={{ position: "relative", height: ROW_H, borderBottom: "1px solid var(--border)" }}>
                     <div
