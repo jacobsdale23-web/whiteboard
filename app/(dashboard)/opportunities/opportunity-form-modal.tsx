@@ -73,7 +73,18 @@ export default function OpportunityFormModal({ opportunity, estimators, people }
             {isEdit && <input type="hidden" name="id" value={opportunity.id} />}
 
             <Field label="Opportunity or Meeting">
-              <select name="kind" value={kind} onChange={(e) => setKind(e.target.value)} style={inputStyle}>
+              <select
+                name="kind"
+                value={kind}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setKind(v);
+                  // The type follows along, so a meeting isn't left tagged "Bid Job" (it can still be changed).
+                  if (v === "Meeting") setOppType("Meeting");
+                  else if (oppType === "Meeting") setOppType("Bid Job");
+                }}
+                style={inputStyle}
+              >
                 {KINDS.map((k) => (
                   <option key={k} value={k}>
                     {k}
