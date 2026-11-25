@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import ProjectFormModal, { type ParentOption } from "./project-form-modal";
 import ManagePeopleModal from "./manage-people-modal";
 import { JOB_KIND_COLORS, JOB_KIND_LABELS, cleanJobKind } from "@/lib/job-kinds";
+import { formatMeetingTime } from "@/lib/meeting";
 
 type BoardProject = {
   id: string;
@@ -28,8 +29,24 @@ type BoardProject = {
 };
 type CompletedProject = { id: string; name: string; projectNumber: string | null; location: string | null; customer: string | null; endDate: string | null };
 type CrewMember = { id: string; name: string };
+// An open bid or a coming meeting, from the Opportunities page.
+type AgendaItem = {
+  id: string;
+  name: string;
+  meeting: boolean;
+  date: string | null;
+  time: string | null;
+  location: string | null;
+  customer: string | null;
+  person: string | null; // estimator, or the meeting's organizer
+  attendees: string[];
+  pastDue: boolean;
+  today: boolean;
+};
 
 const MAX_COMPLETED_SHOWN = 30;
+
+const agendaDate = (iso: string | null) => (iso ? new Date(iso + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : "No date");
 
 function matches(query: string, ...fields: (string | null | undefined | string[])[]): boolean {
   const hay = fields
@@ -45,6 +62,7 @@ function matches(query: string, ...fields: (string | null | undefined | string[]
 }
 
 export default function BoardView({
+  agenda,
   active,
   upcoming,
   onHold,
@@ -58,6 +76,7 @@ export default function BoardView({
   showNotes = false,
   readOnly = false,
 }: {
+  agenda: AgendaItem[];
   active: BoardProject[];
   upcoming: BoardProject[];
   onHold: BoardProject[];
@@ -84,12 +103,15 @@ export default function BoardView({
     return { active: a, upcoming: u, onHold: h, completed: c.slice(0, MAX_COMPLETED_SHOWN), completedTotal: c.length };
   }, [q, searching, active, upcoming, onHold, completed]);
 
-  const totalMatches = shown.active.length + shown.upcoming.length + shown.onHold.length + shown.completedTotal;
+  const shownAgenda = searching ? agenda.filter((a) => matches(q, a.name, a.location, a.customer, a.person, a.attendees, a.meeting ? "meeting" : "bid")) : agenda;
+  const totalMatches = shown.active.length + shown.upcoming.length + shown.onHold.length + shown.completedTotal + (searching ? shownAgenda.length : 0);
 
   function onEnter() {
     if (!searching) return;
     const first = shown.active[0] || shown.upcoming[0] || shown.onHold[0] || shown.completed[0];
-    if (totalMatches === 1 && first) router.push(`/projects/${first.id}`);
+    if (totalMatches !== 1) return;
+    if (first) router.push(`/projects/${first.id}`);
+    else if (shownAgenda[0]) router.push(`/opportunities/${shownAgenda[0].id}`);
   }
 
   return (
@@ -135,8 +157,40 @@ export default function BoardView({
 
       {searching && (
         <p style={{ color: "var(--muted)", fontSize: "0.9rem", marginBottom: 16 }}>
-          {totalMatches ? `${totalMatches} project${totalMatches === 1 ? "" : "s"} match “${q.trim()}”` : `No projects match “${q.trim()}”.`}
+          {totalMatches ? `${totalMatches} result${totalMatches === 1 ? "" : "s"} for “${q.trim()}”` : `Nothing matches “${q.trim()}”.`}
         </p>
+      )}
+
+      {shownAgenda.length > 0 && (
+        <details open style={{ marginBottom: 32 }}>
+          <summary style={{ cursor: "pointer", marginBottom: 12 }}>
+            <h2 style={{ display: "inline" }}>
+              Bids &amp; Meetings ({searching ? `${shownAgenda.length} of ${agenda.length}` : agenda.length})
+            </h2>
+          </summary>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
+            {shownAgenda.map((a) => (
+              <Link key={a.id} href={`/opportunities/${a.id}`} style={{ ...cardStyle, borderLeft: `4px solid ${a.meeting ? "var(--shop)" : "var(--upcoming)"}` }}>
+                <div style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", color: a.meeting ? "var(--shop)" : "var(--upcoming)" }}>
+                  {a.meeting ? "Meeting" : "Bid"}
+                  {a.today && " · today"}
+                  {a.pastDue && <span style={{ color: "var(--danger)" }}> · past due</span>}
+                </div>
+                <h3 style={{ fontSize: "1rem" }}>{a.name}</h3>
+                <div style={{ color: "var(--muted)", fontSize: "0.85rem" }}>{[a.customer, a.location].filter(Boolean).join(" · ")}</div>
+                <div style={{ marginTop: 8, fontSize: "0.85rem", fontWeight: 600 }}>
+                  {a.meeting ? "" : "Due: "}
+                  {agendaDate(a.date)}
+                  {a.time ? ` at ${formatMeetingTime(a.time)}` : ""}
+                </div>
+                <div style={{ fontSize: "0.85rem" }}>
+                  {a.meeting ? "Organizer" : "Estimator"}: {a.person || "—"}
+                </div>
+                {!!a.attendees.length && <div style={{ fontSize: "0.85rem" }}>Also: {a.attendees.join(", ")}</div>}
+              </Link>
+            ))}
+          </div>
+        </details>
       )}
 
       {(!searching || shown.active.length > 0) && (

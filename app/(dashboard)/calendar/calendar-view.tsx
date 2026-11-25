@@ -126,7 +126,7 @@ export default function CalendarView({ projects: allProjects, events: allEvents,
 
   // Bids and meetings go by their estimator, who becomes the job's PM when the bid is won.
   const projects = useMemo(() => allProjects.filter((p) => matchesKindFilters(filter, p) && pmMatches(p.pm)), [allProjects, filter, pmFilter]); // eslint-disable-line react-hooks/exhaustive-deps
-  const events = useMemo(() => allEvents.filter((e) => matchesKindFilters(filter, { jobKind: jobKindFromOppType(e.oppType), billingType: billingTypeFromOppType(e.oppType) }) && pmMatches(e.estimator)), [allEvents, filter, pmFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  const events = useMemo(() => allEvents.filter((e) => matchesKindFilters(filter, { jobKind: jobKindFromOppType(e.oppType), billingType: billingTypeFromOppType(e.oppType), meeting: e.kind === "Meeting" }) && pmMatches(e.estimator)), [allEvents, filter, pmFilter]); // eslint-disable-line react-hooks/exhaustive-deps
   const items = useItems(projects);
   const selected = selectedId ? allProjects.find((p) => p.id === selectedId) ?? null : null;
   const filtered = filter.length > 0 || pmFilter !== "";
@@ -234,8 +234,10 @@ export default function CalendarView({ projects: allProjects, events: allEvents,
       ) : null}
       {mode === "timeline" && !(filtered && !items.length && !events.length) && (
         <>
-          <GanttChart projects={projects} crew={crew} todayIso={isoOf(today)} onSelect={setSelectedId} />
+          {/* A filter that leaves no jobs (Meetings only) shows just the list below, not an empty chart. */}
+          {(projects.length > 0 || !filtered) && <GanttChart projects={projects} crew={crew} todayIso={isoOf(today)} onSelect={setSelectedId} />}
           <UpcomingEvents events={events} today={today} />
+          {filtered && !projects.length && !events.some((e) => dayDiff(eventDate(e), today) >= 0) && <div style={{ color: "var(--muted)", padding: 20 }}>Nothing coming up for “{filterLabel}”. Past dates still show in the Week and Day views.</div>}
         </>
       )}
       {mode === "week" && <WeekView items={items} events={events} crew={crew} weekStart={startOfWeek(anchor)} today={today} onSelect={setSelectedId} />}

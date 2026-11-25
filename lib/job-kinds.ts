@@ -38,6 +38,7 @@ export const KIND_FILTERS = [
   { value: "taps", label: "Hot tap crew" },
   { value: "quick", label: "Quick jobs" },
   { value: "tm", label: "T&M" },
+  { value: "meetings", label: "Meetings" },
 ] as const;
 export type KindFilter = (typeof KIND_FILTERS)[number]["value"];
 
@@ -52,10 +53,12 @@ export function cleanKindFilters(v: unknown): KindFilter[] {
   return [...out];
 }
 
-export function matchesKindFilters(selected: KindFilter[], job: { jobKind?: string | null; billingType?: string | null }): boolean {
+export function matchesKindFilters(selected: KindFilter[], job: { jobKind?: string | null; billingType?: string | null; meeting?: boolean }): boolean {
   if (!selected.length) return true;
+  // A meeting is not a job: it shows under "Meetings" only (a job never does).
+  if (job.meeting) return selected.includes("meetings");
   const k = cleanJobKind(job.jobKind);
-  return selected.some((f) => (f === "taps" ? isTapKind(k) : f === "quick" ? k === "quick" : job.billingType === "tm"));
+  return selected.some((f) => (f === "taps" ? isTapKind(k) : f === "quick" ? k === "quick" : f === "tm" ? job.billingType === "tm" : false));
 }
 
 // Opportunity types that start a job of a particular kind (or billing type) when won.
